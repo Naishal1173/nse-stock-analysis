@@ -1519,6 +1519,7 @@ def analyze_grouped(
         
         if not signals:
             cur.close()
+            return_db(conn)
             return {
                 "message": "No BUY signals found",
                 "total_companies": 0,
@@ -1535,8 +1536,9 @@ def analyze_grouped(
         
         cur.close()
         return_db(conn)
+        conn = None  # Mark as returned to avoid double return
         
-        # Analyze all signals
+        # Analyze all signals using cached prices (no database connection needed)
         work_items = [
             (symbol, indicator, target, days, None, request_cache)
             for symbol, indicator in signals
@@ -1611,7 +1613,9 @@ def analyze_grouped(
         return {"error": str(e), "results": []}
     finally:
         request_cache.clear()
-        try:
-            return_db(conn)
-        except:
-            pass
+        # Only return connection if it wasn't already returned
+        if conn is not None:
+            try:
+                return_db(conn)
+            except:
+                pass
