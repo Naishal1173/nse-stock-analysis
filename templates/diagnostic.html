@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnostic - NSE Stock Analysis</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin-bottom: 20px; }
+        h2 { color: #666; margin-top: 20px; margin-bottom: 10px; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .status.success { background: #dcfce7; color: #166534; border-left: 4px solid #10b981; }
+        .status.error { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
+        .status.loading { background: #dbeafe; color: #1d4ed8; border-left: 4px solid #3b82f6; }
+        .data-display { background: #f8fafc; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto; }
+        button { background: #3b82f6; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #2563eb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        th { background: #f8fafc; font-weight: bold; }
+        tr:hover { background: #f9fafb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 NSE Stock Analysis - Diagnostic Report</h1>
+        
+        <div class="section">
+            <h2>API Connectivity</h2>
+            <div id="apiStatus"></div>
+            <button onclick="testAPI()">Test API Endpoints</button>
+        </div>
+
+        <div class="section">
+            <h2>Summary Data</h2>
+            <div id="summaryStatus"></div>
+            <div id="summaryData" class="data-display"></div>
+            <button onclick="loadSummary()">Load Summary</button>
+        </div>
+
+        <div class="section">
+            <h2>BUY Signals (Latest Date)</h2>
+            <div id="signalsStatus"></div>
+            <div id="signalsData" class="data-display"></div>
+            <button onclick="loadSignals()">Load Signals</button>
+        </div>
+
+        <div class="section">
+            <h2>Indicators List</h2>
+            <div id="indicatorsStatus"></div>
+            <div id="indicatorsList" class="data-display"></div>
+            <button onclick="loadIndicators()">Load Indicators</button>
+        </div>
+
+        <div class="section">
+            <h2>Dashboard Page Test</h2>
+            <div id="dashboardStatus"></div>
+            <button onclick="testDashboard()">Test Dashboard Page</button>
+            <button onclick="window.location.href='/'">Go to Dashboard</button>
+        </div>
+
+        <div class="section">
+            <h2>Browser Console</h2>
+            <p>Open browser console (F12) to see detailed logs</p>
+            <button onclick="testConsole()">Test Console Logging</button>
+        </div>
+    </div>
+
+    <script>
+        const API = {
+            summary: '/api/summary',
+            signals: '/api/signals',
+            indicators: '/api/indicators'
+        };
+
+        function updateStatus(elementId, message, type = 'loading') {
+            const el = document.getElementById(elementId);
+            if (el) {
+                el.innerHTML = `<div class="status ${type}">${message}</div>`;
+            }
+        }
+
+        function displayData(elementId, data) {
+            const el = document.getElementById(elementId);
+            if (el) {
+                el.textContent = JSON.stringify(data, null, 2);
+            }
+        }
+
+        async function testAPI() {
+            console.log('🧪 Testing API connectivity...');
+            updateStatus('apiStatus', '⏳ Testing API endpoints...', 'loading');
+            
+            try {
+                const response = await fetch(API.summary);
+                if (response.ok) {
+                    updateStatus('apiStatus', '✅ API is responding correctly', 'success');
+                    console.log('✅ API connectivity test passed');
+                } else {
+                    updateStatus('apiStatus', `❌ API returned status ${response.status}`, 'error');
+                    console.error('❌ API error:', response.status);
+                }
+            } catch (error) {
+                updateStatus('apiStatus', `❌ API Error: ${error.message}`, 'error');
+                console.error('❌ API connectivity error:', error);
+            }
+        }
+
+        async function loadSummary() {
+            console.log('📊 Loading summary data...');
+            updateStatus('summaryStatus', '⏳ Loading summary...', 'loading');
+            
+            try {
+                const response = await fetch(API.summary);
+                const data = await response.json();
+                
+                updateStatus('summaryStatus', `✅ Summary loaded successfully (${new Date(data.date).toLocaleDateString()})`, 'success');
+                displayData('summaryData', data);
+                console.log('✅ Summary data:', data);
+            } catch (error) {
+                updateStatus('summaryStatus', `❌ Error: ${error.message}`, 'error');
+                console.error('❌ Summary error:', error);
+            }
+        }
+
+        async function loadSignals() {
+            console.log('📈 Loading BUY signals...');
+            updateStatus('signalsStatus', '⏳ Loading signals...', 'loading');
+            
+            try {
+                const response = await fetch(API.signals);
+                const data = await response.json();
+                
+                updateStatus('signalsStatus', `✅ Loaded ${data.length} BUY signals`, 'success');
+                
+                // Display summary table
+                let html = `<strong>Total Signals: ${data.length}</strong><br><br>`;
+                html += '<table><tr><th>Symbol</th><th>Indicator</th><th>Value</th><th>Date</th></tr>';
+                data.slice(0, 10).forEach(sig => {
+                    html += `<tr><td>${sig.symbol}</td><td>${sig.indicator}</td><td>${sig.value}</td><td>${sig.date}</td></tr>`;
+                });
+                html += '</table>';
+                
+                document.getElementById('signalsData').innerHTML = html;
+                console.log('✅ Signals loaded:', data.length, 'records');
+            } catch (error) {
+                updateStatus('signalsStatus', `❌ Error: ${error.message}`, 'error');
+                console.error('❌ Signals error:', error);
+            }
+        }
+
+        async function loadIndicators() {
+            console.log('📋 Loading indicators list...');
+            updateStatus('indicatorsStatus', '⏳ Loading indicators...', 'loading');
+            
+            try {
+                const response = await fetch(API.indicators);
+                const data = await response.json();
+                
+                updateStatus('indicatorsStatus', `✅ Loaded ${data.length} indicators`, 'success');
+                displayData('indicatorsList', data);
+                console.log('✅ Indicators:', data);
+            } catch (error) {
+                updateStatus('indicatorsStatus', `❌ Error: ${error.message}`, 'error');
+                console.error('❌ Indicators error:', error);
+            }
+        }
+
+        async function testDashboard() {
+            console.log('🎯 Testing dashboard page...');
+            updateStatus('dashboardStatus', '⏳ Testing dashboard...', 'loading');
+            
+            try {
+                const response = await fetch('/');
+                if (response.ok) {
+                    const html = await response.text();
+                    if (html.includes('dashboardAnalyzeBtn')) {
+                        updateStatus('dashboardStatus', '✅ Dashboard page loads correctly', 'success');
+                        console.log('✅ Dashboard page test passed');
+                    } else {
+                        updateStatus('dashboardStatus', '⚠️ Dashboard page missing expected elements', 'error');
+                        console.warn('⚠️ Dashboard missing elements');
+                    }
+                } else {
+                    updateStatus('dashboardStatus', `❌ Dashboard returned status ${response.status}`, 'error');
+                }
+            } catch (error) {
+                updateStatus('dashboardStatus', `❌ Error: ${error.message}`, 'error');
+                console.error('❌ Dashboard error:', error);
+            }
+        }
+
+        function testConsole() {
+            console.log('✅ Console logging is working');
+            console.log('📊 API Summary:', API);
+            console.log('🎯 All systems operational');
+        }
+
+        // Auto-run tests on page load
+        window.addEventListener('load', function() {
+            console.log('🚀 Diagnostic page loaded');
+            console.log('📡 Starting automatic tests...');
+            testAPI();
+            setTimeout(loadSummary, 500);
+            setTimeout(loadSignals, 1000);
+            setTimeout(loadIndicators, 1500);
+        });
+    </script>
+</body>
+</html>

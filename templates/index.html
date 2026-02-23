@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - NSE Stock Analysis{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <!-- Merged Header & Controls Bar -->
+    <div class="merged-header-bar">
+        <div class="header-top">
+            <div class="header-title-section">
+                <h1>Historical BUY Signal Analysis</h1>
+            </div>
+            
+            <!-- Global Company Search -->
+            <div class="global-search-wrapper">
+                <div class="global-search-box">
+                    <input type="text" id="globalSearch" class="global-search-input" placeholder="🔍 Search any company..." autocomplete="off">
+                    <button id="clearGlobalSearch" class="clear-global-search-btn" style="display: none;">✕</button>
+                </div>
+                <div class="global-search-results hidden" id="globalSearchResults"></div>
+            </div>
+            
+            <div class="header-left">
+                <p class="header-subtitle" id="latestDate">Latest Date: -</p>
+            </div>
+            <div class="indicators-section">
+            <div class="indicators-toggle-wrapper">
+                <div class="indicators-toggle" id="indicatorsToggle">
+                    <span class="toggle-icon">▼</span>
+                    <span class="toggle-text">📊 Indicators</span>
+                    <span class="indicator-count" id="indicatorCount">Loading...</span>
+                </div>
+                <div class="indicators-list hidden" id="indicatorsList">
+                </div>
+            </div>
+        </div>
+             <div class="header-controls">
+                <div class="control-group">
+                    <label for="dashboardTarget">Target Profit %</label>
+                    <input type="number" id="dashboardTarget" class="control-input" placeholder="5" min="0.1" max="100" step="0.1" value="5">
+                </div>
+                
+                <div class="control-group">
+                    <label for="dashboardDays">Days to Target</label>
+                    <input type="number" id="dashboardDays" class="control-input" placeholder="30" min="1" max="365" value="30">
+                </div>
+                
+                <button id="dashboardAnalyzeBtn" class="btn btn-primary">
+                    <span class="btn-icon">⚡</span>
+                    <span>Analyze</span>
+                </button>
+            </div>
+        </div>
+
+            <!-- <div class="header-left">
+                <p class="header-subtitle" id="latestDate">Latest Date: -</p>
+            </div> -->
+            <!-- <div class="indicators-section">
+            <div class="indicators-toggle-wrapper">
+                <div class="indicators-toggle" id="indicatorsToggle">
+                    <span class="toggle-icon">▼</span>
+                    <span class="toggle-text">📊 Indicators</span>
+                    <span class="indicator-count" id="indicatorCount">Loading...</span>
+                </div>
+                <div class="indicators-list hidden" id="indicatorsList">
+                </div>
+            </div>
+        </div> -->
+            <!-- <div class="header-controls">
+                <div class="control-group">
+                    <label for="dashboardTarget">Target Profit %</label>
+                    <input type="number" id="dashboardTarget" class="control-input" placeholder="5" min="0.1" max="100" step="0.1" value="5">
+                </div>
+                
+                <div class="control-group">
+                    <label for="dashboardDays">Days to Target</label>
+                    <input type="number" id="dashboardDays" class="control-input" placeholder="30" min="1" max="365" value="30">
+                </div>
+                
+                <button id="dashboardAnalyzeBtn" class="btn btn-primary">
+                    <span class="btn-icon">⚡</span>
+                    <span>Analyze</span>
+                </button>
+            </div> -->
+        
+    </div>
+
+    <!-- Results Section -->
+    <div id="resultsSection" class="results-section hidden">
+        <div class="results-header">
+            <div class="results-header-row">
+                <!-- Search Box for Results -->
+                <div class="results-search-box">
+                    <input type="text" id="resultsSearch" class="results-search-input" placeholder="🔍 Search companies or indicators..." autocomplete="off">
+                    <button id="clearSearch" class="clear-search-btn" style="display: none;">✕</button>
+                </div>
+                
+                <!-- Filter Dropdown -->
+                <div class="results-filter-group">
+                    <label for="minSignals">Filter:</label>
+                    <select id="minSignals" class="control-input control-select filter-select">
+                        <option value="1">All Companies</option>
+                        <option value="2">2+ Signals</option>
+                        <option value="3">3+ Signals</option>
+                        <option value="4">4+ Signals</option>
+                        <option value="5">5+ Signals</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div id="resultsContainer" class="results-container">
+            <div class="empty-state">Loading results...</div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="loading-state hidden">
+        <div class="spinner"></div>
+        <p>Analyzing all companies...</p>
+    </div>
+</div>
+
+<script>
+    // Store all BUY signals for analysis
+    let allBuySignals = [];
+</script>
+
+<!-- Load fast loading script for dashboard -->
+<script src="/static/progressive-fast.js?v=2.5"></script>
+{% endblock %}

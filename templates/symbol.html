@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}{{ symbol }} - NSE Stock Analysis{% endblock %}
+
+{% block content %}
+<div class="symbol-page">
+    <div class="symbol-header">
+        <div class="symbol-header-left">
+            <!-- <a href="/" class="back-button">← Back to Dashboard</a> -->
+            <h1 class="symbol-title">{{ symbol }}</h1>
+        </div>
+    </div>
+
+    <div class="analysis-section">
+        <div class="analysis-header">
+            <h2>Historical BUY Signal Analysis</h2>
+            <p class="analysis-description">Analyze past BUY signals to predict future performance</p>
+        </div>
+        
+        <div class="analysis-controls">
+            <div class="control-group">
+                <label for="analysisIndicator">INDICATOR:</label>
+                <select id="analysisIndicator" class="filter-select">
+                    <option value="">Select Indicator</option>
+                    <!-- Options dynamically loaded by loadAnalysisIndicators() in script.js -->
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="analysisTarget">TARGET PROFIT %:</label>
+                <input type="number" id="analysisTarget" class="analysis-input" placeholder="e.g. 5" min="0.1" max="100" step="0.1" value="5">
+            </div>
+            
+            <div class="control-group">
+                <label for="analysisDays">DAYS TO TARGET:</label>
+                <input type="number" id="analysisDays" class="analysis-input" placeholder="e.g. 30" min="1" max="365" value="30">
+            </div>
+            
+            <button id="analyzeBtn" class="btn btn-primary">ANALYZE</button>
+        </div>
+        
+        <div id="analysisLoading" class="analysis-loading" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p>Analyzing historical data...</p>
+        </div>
+        
+        <div id="analysisResult" class="analysis-result" style="display: none;">
+            <div class="result-header">
+                <h3>Analysis Results</h3>
+                <div class="decision-badge" id="decisionBadge"></div>
+            </div>
+            
+            <div class="result-summary">
+                <div class="summary-item">
+                    <span class="label">Total BUY Signals:</span>
+                    <span class="value" id="aTotal">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Completed Trades:</span>
+                    <span class="value" id="aCompleted">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Open Trades:</span>
+                    <span class="value" id="aOpen">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Successful Trades:</span>
+                    <span class="value" id="aSuccess">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Success Rate:</span>
+                    <span class="value" id="aRate">-</span>%
+                </div>
+                <div class="summary-item">
+                    <span class="label">Avg Max Profit:</span>
+                    <span class="value" id="aAvgProfit">-</span>%
+                </div>
+                <div class="summary-item">
+                    <span class="label">Avg Max Loss:</span>
+                    <span class="value" id="aAvgLoss">-</span>%
+                </div>
+            </div>
+            
+            <div class="recommendation-box">
+                <h4>Investment Recommendation</h4>
+                <p id="recommendationText">-</p>
+            </div>
+            
+            <div class="details-section">
+                <h4>Historical Details (Latest First)</h4>
+                <div class="details-table-container">
+                    <table class="details-table">
+                        <thead>
+                            <tr>
+                                <th>Buy Date</th>
+                                <th>Buy Price</th>
+                                <th>Target Price</th>
+                                <th>Max Price Reached</th>
+                                <th>Days Checked</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detailsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-section">
+        <div class="chart-controls">
+            <h2>Price Chart & Indicators</h2>
+            <div class="chart-options">
+                <select id="smaSelect" class="filter-select">
+                    <option value="">Select SMA</option>
+                </select>
+                <select id="rsiSelect" class="filter-select">
+                    <option value="">Select RSI</option>
+                </select>
+                <select id="bbSelect" class="filter-select">
+                    <option value="">Select Bollinger Bands</option>
+                </select>
+                <select id="macdSelect" class="filter-select">
+                    <option value="">Select MACD</option>
+                </select>
+                <select id="stochSelect" class="filter-select">
+                    <option value="">Select Stochastic</option>
+                </select>
+                <button id="updateChartBtn" class="btn btn-secondary">Update Chart</button>
+            </div>
+        </div>
+        
+        <!-- Chart 1: Price + SMA -->
+        <div class="chart-wrapper">
+            <h3 class="chart-title">📈 Price & SMA Chart</h3>
+            <div id="priceChart" class="main-chart"></div>
+        </div>
+        
+        <!-- Chart 2: Bollinger Bands -->
+        <div class="chart-wrapper">
+            <h3 class="chart-title">📊 Bollinger Bands Chart</h3>
+            <div id="bbChart" class="indicator-chart"></div>
+        </div>
+        
+        <!-- Chart 3: RSI -->
+        <div class="chart-wrapper">
+            <h3 class="chart-title">📉 RSI Chart</h3>
+            <div id="rsiChart" class="indicator-chart"></div>
+        </div>
+        
+        <!-- Chart 4: MACD -->
+        <div class="chart-wrapper">
+            <h3 class="chart-title">📊 MACD Chart</h3>
+            <div id="macdChart" class="indicator-chart"></div>
+        </div>
+        
+        <!-- Chart 5: Stochastic -->
+        <div class="chart-wrapper">
+            <h3 class="chart-title">📈 Stochastic Oscillator Chart</h3>
+            <div id="stochChart" class="indicator-chart"></div>
+        </div>
+    </div>
+
+    <div class="indicators-table-container" style="display: none;">
+        <h2>Indicator History</h2>
+        <button id="loadIndicatorsBtn" class="btn btn-secondary">Load Indicator History</button>
+        <div class="table-wrapper" id="indicatorsTableWrapper" style="display: none;">
+            <table class="indicators-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Indicator</th>
+                        <th>Value</th>
+                        <th>Signal</th>
+                    </tr>
+                </thead>
+                <tbody id="indicatorsTableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SYMBOL = "{{ symbol }}";
+</script>
+{% endblock %}
