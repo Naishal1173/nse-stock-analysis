@@ -1483,3 +1483,135 @@ def analyze_fast(
             return_db(conn)
         except:
             pass
+
+
+# =========================================================
+# GROUPED ANALYSIS - BY COMPANY (AGGREGATE ALL INDICATORS)
+# =========================================================
+@app.get("/api/analyze-grouped")
+def analyze_grouped(
+    target: float = Query(5.0, description="Target profit percentage"),
+    days: int = Query(30, description="Days to hold position"),
+    limit: int = Query(10000, ge=1, le=10000, description="Maximum number of signals to analyze")
+):
+    """
+    Analyze signals grouped by company symbol
+    - Aggregates all indicators for each company
+    - Shows combined statistics (total signals, success, failure, open, success%)
+    - Returns one row per company instead of one row per indicator
+    """
+    start_time = time.time()
+    conn = get_db()
+    request_cache = {}
+    
+    try:
+        cur = conn.cursor()
+        
+        # Get all latest BUY signals
+        cur.execute("""
+            SELECT symbol, indicator
+            FROM latest_buy_signals
+            ORDER BY symbol, indicator
+            LIMIT %s
+        """, (limit,))
+        
+        signals = cur.fetchall()
+        
+        if not signals:
+            cur.close()
+            return {
+                "message": "No BUY signals found",
+                "total_companies": 0,
+                "results": []
+            }
+        
+        # Extract unique symbols for batch price loading
+        unique_symbols = list(set(symbol for symbol, _ in signals))
+        print(f"[GROUPED] Loading prices for {len(unique_symbols)} unique symbols...")
+        
+        # Batch load all prices
+        prices_data = _batch_load_prices(cur, unique_symbols)
+        request_cache.update(prices_data)
+        
+        cur.close()
+        return_db(conn)
+        
+        # Analyze all signals
+        work_items = [
+            (symbol, indicator, target, days, None, request_cache)
+            for symbol, indicator in signals
+        ]
+        
+        print(f"[GROUPED] Analyzing {len(signals)} signals...")
+        chunksize = max(1, len(work_items) // 30)
+        results = list(executor.map(_analyze_worker, work_items, chunksize=chunksize))
+        
+        # Group results by symbol
+        grouped = {}
+        for result in results:
+            symbol = result.get('symbol')
+            if not symbol:
+                continue
+            
+            if symbol not in grouped:
+                grouped[symbol] = {
+                    'symbol': symbol,
+                    'indicators': [],
+                    'total_signals': 0,
+                    'successful': 0,
+                    'failed': 0,
+                    'open': 0,
+                    'completed': 0
+                }
+            
+            grouped[symbol]['indicators'].append(result.get('indicator'))
+            grouped[symbol]['total_signals'] += result.get('totalSignals', 0)
+            grouped[symbol]['successful'] += result.get('successful', 0)
+            grouped[symbol]['failed'] += result.get('failed', 0)
+            grouped[symbol]['open'] += result.get('open', 0)
+            grouped[symbol]['completed'] += result.get('completedTrades', 0)
+        
+        # Calculate success rate for each company
+        final_results = []
+        for symbol, data in grouped.items():
+            success_rate = 0
+            if data['completed'] > 0:
+                success_rate = round((data['successful'] / data['completed']) * 100, 2)
+            
+            final_results.append({
+                'symbol': symbol,
+                'indicators': ', '.join(data['indicators']),
+                'indicator_count': len(data['indicators']),
+                'totalSignals': data['total_signals'],
+                'successful': data['successful'],
+                'failed': data['failed'],
+                'open': data['open'],
+                'completedTrades': data['completed'],
+                'successRate': success_rate
+            })
+        
+        # Sort by success rate (highest first), then by symbol
+        final_results.sort(key=lambda x: (-x.get('successRate', 0), x.get('symbol', '')))
+        
+        total_time = time.time() - start_time
+        
+        return {
+            "message": "Grouped analysis complete",
+            "total_companies": len(final_results),
+            "total_signals_analyzed": len(signals),
+            "target_profit": target,
+            "days_to_hold": days,
+            "processing_time_seconds": round(total_time, 2),
+            "results": final_results
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e), "results": []}
+    finally:
+        request_cache.clear()
+        try:
+            return_db(conn)
+        except:
+            pass

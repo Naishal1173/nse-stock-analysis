@@ -902,3 +902,148 @@ function navigateToSymbol(symbol) {
 
 // Expose function for button handler (used by script.js)
 window.analyzeDashboardProgressive = analyzeDashboardFast;
+
+
+// =========================================================
+// GROUPED ANALYSIS - BY COMPANY
+// =========================================================
+async function analyzeDashboardGrouped() {
+    const target = document.getElementById('dashboardTarget').value;
+    const days = document.getElementById('dashboardDays').value;
+
+    if (!target || !days) {
+        showNotification('Fill target and days', 'warning');
+        return;
+    }
+
+    try {
+        allResults = [];
+        dashboardCurrentPage = 1;
+
+        document.getElementById('loadingState').classList.remove('hidden');
+        document.getElementById('resultsSection').classList.add('hidden');
+
+        console.log('📊 [DASHBOARD] Starting GROUPED analysis...');
+        const startTime = performance.now();
+
+        // Call grouped endpoint
+        const url = `/api/analyze-grouped?target=${target}&days=${days}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.error) {
+            showError('Analysis failed: ' + data.error);
+            document.getElementById('loadingState').classList.add('hidden');
+            return;
+        }
+
+        allResults = data.results || [];
+        
+        console.log(`✅ [DASHBOARD] Grouped analysis complete: ${allResults.length} companies`);
+        
+        // Show results
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('resultsSection').classList.remove('hidden');
+        
+        displayGroupedResults(allResults, target, days);
+
+        const endTime = performance.now();
+        const totalTime = ((endTime - startTime) / 1000).toFixed(2);
+        console.log(`⏱️ [DASHBOARD] Total time: ${totalTime}s`);
+
+    } catch (error) {
+        console.error('❌ [DASHBOARD] Error:', error);
+        showError('Analysis failed: ' + error.message);
+        document.getElementById('loadingState').classList.add('hidden');
+    }
+}
+
+// Display grouped results (one row per company)
+function displayGroupedResults(results, target, days) {
+    const container = document.getElementById('resultsContainer');
+    
+    if (!results || results.length === 0) {
+        container.innerHTML = '<div class="empty-state">No results found</div>';
+        return;
+    }
+
+    let html = `
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th>NO.</th>
+                    <th>COMPANY SYMBOL</th>
+                    <th>INDICATORS</th>
+                    <th>TOTAL SIGNALS</th>
+                    <th>SUCCESS</th>
+                    <th>FAILURE</th>
+                    <th>OPEN</th>
+                    <th>SUCCESS %</th>
+                    <th>ACTION</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    results.forEach((result, index) => {
+        const successClass = result.successRate >= 50 ? 'success-high' : 'success-low';
+        const indicatorBadge = result.indicator_count > 1 ? 
+            `<span class="badge badge-power">${result.indicator_count} signals</span>` : '';
+        
+        html += `
+            <tr>
+                <td>${index + 1}</td>
+                <td>
+                    <strong>${result.symbol}</strong>
+                    ${indicatorBadge}
+                </td>
+                <td><small>${result.indicators}</small></td>
+                <td>${result.totalSignals}</td>
+                <td class="success-cell">${result.successful}</td>
+                <td class="failure-cell">${result.failed}</td>
+                <td class="open-cell">${result.open}</td>
+                <td class="${successClass}">${result.successRate}%</td>
+                <td>
+                    <a href="/symbol/${result.symbol}" class="btn btn-sm btn-primary" target="_blank">
+                        VIEW DETAILS
+                    </a>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+// Toggle between grouped and ungrouped view
+document.addEventListener('DOMContentLoaded', function() {
+    const groupCheckbox = document.getElementById('groupByCompany');
+    const analyzeBtn = document.getElementById('dashboardAnalyzeBtn');
+    
+    if (groupCheckbox && analyzeBtn) {
+        // Update analyze button click handler
+        analyzeBtn.addEventListener('click', function() {
+            if (groupCheckbox.checked) {
+                analyzeDashboardGrouped();
+            } else {
+                analyzeDashboardFast();
+            }
+        });
+        
+        // Re-analyze when toggle changes (if results already loaded)
+        groupCheckbox.addEventListener('change', function() {
+            if (allResults.length > 0) {
+                if (this.checked) {
+                    analyzeDashboardGrouped();
+                } else {
+                    analyzeDashboardFast();
+                }
+            }
+        });
+    }
+});
