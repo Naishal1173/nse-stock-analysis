@@ -32,40 +32,6 @@ services:
           name: nse-postgres
           property: password
 
-  # Cron Job for Daily Data Download (runs at 6:30 PM IST = 1:00 PM UTC)
-  - type: cron
-    name: nse-daily-update
-    env: python
-    region: oregon
-    plan: free
-    branch: main
-    schedule: "0 13 * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python run_daily.py
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: DB_HOST
-        fromDatabase:
-          name: nse-postgres
-          property: host
-      - key: DB_PORT
-        fromDatabase:
-          name: nse-postgres
-          property: port
-      - key: DB_NAME
-        fromDatabase:
-          name: nse-postgres
-          property: database
-      - key: DB_USER
-        fromDatabase:
-          name: nse-postgres
-          property: user
-      - key: DB_PASSWORD
-        fromDatabase:
-          name: nse-postgres
-          property: password
-
 databases:
   # PostgreSQL Database
   - name: nse-postgres
