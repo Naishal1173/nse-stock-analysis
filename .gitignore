@@ -14,8 +14,6 @@ ENV/
 *.sqlite
 *.sqlite3
 
-# Configuration (contains sensitive data)
-config.py
 
 # Logs
 logs/
