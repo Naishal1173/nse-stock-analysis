@@ -1860,12 +1860,36 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('dashboardAnalyzeBtn')) {
         // Dashboard page
         const analyzeBtn = document.getElementById('dashboardAnalyzeBtn');
+        const groupCheckbox = document.getElementById('groupByCompany');
         
         // Use progressive loading if available, otherwise fall back to regular
         if (typeof analyzeDashboardProgressive !== 'undefined') {
-            analyzeBtn.addEventListener('click', analyzeDashboardProgressive);
+            analyzeBtn.addEventListener('click', function() {
+                // Check if grouped analysis is requested
+                if (groupCheckbox && groupCheckbox.checked && typeof analyzeDashboardGrouped !== 'undefined') {
+                    analyzeDashboardGrouped();
+                } else if (typeof analyzeDashboardFast !== 'undefined') {
+                    analyzeDashboardFast();
+                } else {
+                    analyzeDashboardProgressive();
+                }
+            });
         } else {
             analyzeBtn.addEventListener('click', analyzeDashboard);
+        }
+        
+        // Add change event listener for group by company checkbox
+        if (groupCheckbox) {
+            groupCheckbox.addEventListener('change', function() {
+                // Re-analyze when toggle changes (if results already loaded)
+                if (allResults && allResults.length > 0) {
+                    if (this.checked && typeof analyzeDashboardGrouped !== 'undefined') {
+                        analyzeDashboardGrouped();
+                    } else if (typeof analyzeDashboardFast !== 'undefined') {
+                        analyzeDashboardFast();
+                    }
+                }
+            });
         }
 
         // Load summary info

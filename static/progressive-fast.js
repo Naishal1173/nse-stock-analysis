@@ -1019,31 +1019,3 @@ function displayGroupedResults(results, target, days) {
 
     container.innerHTML = html;
 }
-
-// Toggle between grouped and ungrouped view
-document.addEventListener('DOMContentLoaded', function() {
-    const groupCheckbox = document.getElementById('groupByCompany');
-    const analyzeBtn = document.getElementById('dashboardAnalyzeBtn');
-    
-    if (groupCheckbox && analyzeBtn) {
-        // Update analyze button click handler
-        analyzeBtn.addEventListener('click', function() {
-            if (groupCheckbox.checked) {
-                analyzeDashboardGrouped();
-            } else {
-                analyzeDashboardFast();
-            }
-        });
-        
-        // Re-analyze when toggle changes (if results already loaded)
-        groupCheckbox.addEventListener('change', function() {
-            if (allResults.length > 0) {
-                if (this.checked) {
-                    analyzeDashboardGrouped();
-                } else {
-                    analyzeDashboardFast();
-                }
-            }
-        });
-    }
-});
