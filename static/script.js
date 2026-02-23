@@ -1861,6 +1861,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Dashboard page
         const analyzeBtn = document.getElementById('dashboardAnalyzeBtn');
         const groupCheckbox = document.getElementById('groupByCompany');
+        const filterDropdown = document.getElementById('minSignals');
+        const filterGroup = filterDropdown ? filterDropdown.closest('.results-filter-group') : null;
         
         // Use progressive loading if available, otherwise fall back to regular
         if (typeof analyzeDashboardProgressive !== 'undefined') {
@@ -1881,12 +1883,32 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add change event listener for group by company checkbox
         if (groupCheckbox) {
             groupCheckbox.addEventListener('change', function() {
+                // Hide/show filter dropdown based on checkbox state
+                if (filterGroup) {
+                    if (this.checked) {
+                        // Hide filter when grouped
+                        filterGroup.style.display = 'none';
+                    } else {
+                        // Show filter when ungrouped
+                        filterGroup.style.display = 'flex';
+                    }
+                }
+                
                 // Re-analyze when toggle changes (if results already loaded)
                 if (allResults && allResults.length > 0) {
                     if (this.checked && typeof analyzeDashboardGrouped !== 'undefined') {
                         analyzeDashboardGrouped();
                     } else if (typeof analyzeDashboardFast !== 'undefined') {
-                        analyzeDashboardFast();
+                        // Restore ungrouped results instantly
+                        if (ungroupedResults && ungroupedResults.length > 0) {
+                            console.log('📊 [DASHBOARD] Restoring ungrouped results...');
+                            allResults = [...ungroupedResults];
+                            const target = document.getElementById('dashboardTarget').value;
+                            const days = document.getElementById('dashboardDays').value;
+                            displayResults(allResults, target, days);
+                        } else {
+                            analyzeDashboardFast();
+                        }
                     }
                 }
             });

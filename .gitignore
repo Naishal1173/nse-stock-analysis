@@ -47,3 +47,8 @@ desktop.ini
 *.tmp
 *.bak
 *.cache
+
+# Documentation (temporary)
+*_READINESS*.md
+*_TEST*.md
+*_FIX*.md

@@ -237,8 +237,12 @@ def export_all_buy_signals(log_file=None, latest_date=None):
             
             # Read existing CSV to find last date
             existing_df = pd.read_csv(csv_file)
-            last_date_in_csv = existing_df['trade_date'].max()
+            last_date_in_csv = pd.to_datetime(existing_df['trade_date'].max()).date()
             log_message(f"📅 Last date in CSV: {last_date_in_csv}", log_file)
+            
+            # Convert latest_date to date object if it's a string
+            if isinstance(latest_date, str):
+                latest_date = pd.to_datetime(latest_date).date()
             
             if latest_date and latest_date > last_date_in_csv:
                 # Query only NEW data for the latest date
@@ -271,15 +275,26 @@ def export_all_buy_signals(log_file=None, latest_date=None):
                 if len(new_df) > 0:
                     log_message(f"✓ Retrieved {len(new_df):,} NEW BUY signals", log_file)
                     
-                    # Append to existing CSV
-                    log_message(f"💾 Appending to existing CSV...", log_file)
-                    new_df.to_csv(csv_file, mode='a', header=False, index=False)
+                    # Merge with existing data and re-sort to maintain grouping
+                    log_message(f"💾 Merging and sorting data...", log_file)
+                    
+                    # Combine existing and new data
+                    combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                    
+                    # Sort by symbol (company) first, then by date descending
+                    combined_df = combined_df.sort_values(
+                        by=['symbol', 'trade_date'], 
+                        ascending=[True, False]  # Symbol A-Z, Date newest first
+                    )
+                    
+                    # Write sorted data back to CSV
+                    combined_df.to_csv(csv_file, index=False)
                     
                     # Get updated file info
                     file_size = os.path.getsize(csv_file) / (1024 * 1024)  # MB
-                    total_records = len(existing_df) + len(new_df)
+                    total_records = len(combined_df)
                     
-                    log_message(f"\n✅ Append Complete!", log_file)
+                    log_message(f"\n✅ Update Complete!", log_file)
                     log_message(f"📊 File: {csv_file.name}", log_file)
                     log_message(f"💾 Size: {file_size:.2f} MB", log_file)
                     log_message(f"📈 NEW BUY Signals Added: {len(new_df):,}", log_file)

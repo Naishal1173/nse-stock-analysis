@@ -1534,11 +1534,8 @@ def analyze_grouped(
         prices_data = _batch_load_prices(cur, unique_symbols)
         request_cache.update(prices_data)
         
-        cur.close()
-        return_db(conn)
-        conn = None  # Mark as returned to avoid double return
-        
-        # Analyze all signals using cached prices (no database connection needed)
+        # Analyze using the regular worker (with database connections)
+        # This is simpler and more reliable than trying to cache everything
         work_items = [
             (symbol, indicator, target, days, None, request_cache)
             for symbol, indicator in signals
@@ -1547,6 +1544,10 @@ def analyze_grouped(
         print(f"[GROUPED] Analyzing {len(signals)} signals...")
         chunksize = max(1, len(work_items) // 30)
         results = list(executor.map(_analyze_worker, work_items, chunksize=chunksize))
+        
+        cur.close()
+        return_db(conn)
+        conn = None  # Mark as returned
         
         # Group results by symbol
         grouped = {}
@@ -1570,7 +1571,7 @@ def analyze_grouped(
             grouped[symbol]['total_signals'] += result.get('totalSignals', 0)
             grouped[symbol]['successful'] += result.get('successful', 0)
             grouped[symbol]['failed'] += result.get('failed', 0)
-            grouped[symbol]['open'] += result.get('open', 0)
+            grouped[symbol]['open'] += result.get('openTrades', 0)
             grouped[symbol]['completed'] += result.get('completedTrades', 0)
         
         # Calculate success rate for each company
@@ -1618,4 +1619,5 @@ def analyze_grouped(
             try:
                 return_db(conn)
             except:
+                pass
                 pass

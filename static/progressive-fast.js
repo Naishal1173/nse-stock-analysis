@@ -1,5 +1,6 @@
 // FAST VERSION - Loads all results at once
 let allResults = [];
+let ungroupedResults = []; // Store original ungrouped results for fast toggling
 let currentDisplayedResults = []; // Track what's currently being displayed
 let dashboardCurrentPage = 1;
 const ITEMS_PER_PAGE = 50;
@@ -90,6 +91,9 @@ async function analyzeDashboardFast() {
                 }
                 filteredResults = applySmartSorting(filteredResults);
                 allResults = filteredResults;
+                
+                // Store ungrouped results for fast toggling
+                ungroupedResults = [...allResults];
                 
                 // Final display
                 displayResults(allResults, target, days);
@@ -493,6 +497,8 @@ let searchFilteredResults = [];
 let isSearchActive = false;
 let currentMinSignals = 1; // Track current filter setting
 
+let searchSetupDone = false;
+
 function setupResultsSearch() {
     const searchInput = document.getElementById('resultsSearch');
     const clearBtn = document.getElementById('clearSearch');
@@ -501,14 +507,26 @@ function setupResultsSearch() {
     
     // Initialize button state
     if (clearBtn) {
-        clearBtn.style.display = searchInput.value.trim() ? 'flex' : 'none';
+        if (searchInput.value.trim()) {
+            clearBtn.classList.add('visible');
+        } else {
+            clearBtn.classList.remove('visible');
+        }
     }
+    
+    // Prevent duplicate event listener setup
+    if (searchSetupDone) return;
+    searchSetupDone = true;
     
     searchInput.addEventListener('input', function() {
         const searchTerm = this.value.toLowerCase().trim();
         
         if (clearBtn) {
-            clearBtn.style.display = searchTerm ? 'flex' : 'none';
+            if (searchTerm) {
+                clearBtn.classList.add('visible');
+            } else {
+                clearBtn.classList.remove('visible');
+            }
         }
         
         if (!searchTerm) {
@@ -517,13 +535,23 @@ function setupResultsSearch() {
             searchFilteredResults = [];
             dashboardCurrentPage = 1;
             
-            // Apply min signals filter
+            // Check if we're in grouped mode
+            const isGrouped = allResults.length > 0 && allResults[0].indicators !== undefined;
+            
+            // Apply min signals filter (only for ungrouped mode)
             let filteredResults = [...allResults];
-            if (currentMinSignals > 1) {
+            if (currentMinSignals > 1 && !isGrouped) {
                 filteredResults = applyMinSignalsFilter(filteredResults, currentMinSignals);
             }
             
-            displayResults(filteredResults, null, null);
+            // Use appropriate display function based on mode
+            if (isGrouped) {
+                const target = document.getElementById('dashboardTarget').value;
+                const days = document.getElementById('dashboardDays').value;
+                displayGroupedResults(filteredResults, target, days);
+            } else {
+                displayResults(filteredResults, null, null);
+            }
             return;
         }
         
@@ -538,11 +566,19 @@ function setupResultsSearch() {
         
         searchFilteredResults = baseResults.filter(result => {
             const symbol = result.symbol.toLowerCase();
-            let indicator = result.indicator.toLowerCase();
             
-            // Handle MACD naming
-            if (indicator === 'short' || indicator === 'long' || indicator === 'standard') {
-                indicator = `macd_${indicator}`;
+            // Handle both grouped and ungrouped results
+            let indicator = '';
+            if (result.indicator) {
+                // Ungrouped result - single indicator
+                indicator = result.indicator.toLowerCase();
+                // Handle MACD naming
+                if (indicator === 'short' || indicator === 'long' || indicator === 'standard') {
+                    indicator = `macd_${indicator}`;
+                }
+            } else if (result.indicators) {
+                // Grouped result - multiple indicators as string
+                indicator = result.indicators.toLowerCase();
             }
             
             return symbol.includes(searchTerm) || indicator.includes(searchTerm);
@@ -560,13 +596,27 @@ function setupResultsSearch() {
             searchFilteredResults = [];
             dashboardCurrentPage = 1;
             
+            // Hide clear button
+            clearBtn.classList.remove('visible');
+            
+            // Check if we're in grouped mode
+            const isGrouped = allResults.length > 0 && allResults[0].indicators !== undefined;
+            
             // Apply min signals filter when clearing search
             let filteredResults = [...allResults];
-            if (currentMinSignals > 1) {
+            if (currentMinSignals > 1 && !isGrouped) {
                 filteredResults = applyMinSignalsFilter(filteredResults, currentMinSignals);
             }
             
-            displayResults(filteredResults, null, null);
+            // Use appropriate display function
+            if (isGrouped) {
+                const target = document.getElementById('dashboardTarget').value;
+                const days = document.getElementById('dashboardDays').value;
+                displayGroupedResults(filteredResults, target, days);
+            } else {
+                displayResults(filteredResults, null, null);
+            }
+            
             searchInput.focus();
         });
     }
@@ -574,6 +624,15 @@ function setupResultsSearch() {
 
 function displaySearchResults(results, searchTerm) {
     const container = document.getElementById('resultsContainer');
+    
+    // Check if we're displaying grouped results
+    const isGrouped = results.length > 0 && results[0].indicators !== undefined;
+    
+    if (isGrouped) {
+        // Use grouped display for grouped results
+        displaySearchResultsGrouped(results, searchTerm);
+        return;
+    }
     
     const totalPages = Math.ceil(results.length / ITEMS_PER_PAGE);
     const startIndex = (dashboardCurrentPage - 1) * ITEMS_PER_PAGE;
@@ -679,6 +738,71 @@ function displaySearchResults(results, searchTerm) {
             <button class="pagination-btn" onclick="changeSearchPage(${totalPages})" ${dashboardCurrentPage === totalPages ? 'disabled' : ''}>Last »</button>
         </div>`;
     }
+
+    container.innerHTML = html;
+}
+
+// Display search results for grouped data
+function displaySearchResultsGrouped(results, searchTerm) {
+    const container = document.getElementById('resultsContainer');
+    
+    if (!results || results.length === 0) {
+        container.innerHTML = `<div class="empty-state">No results found for "${searchTerm}"</div>`;
+        return;
+    }
+
+    let html = `
+        <div class="results-progress-header">
+            <span class="progress-count">${results.length} of ${allResults.length} companies (searching: "${searchTerm}")</span>
+        </div>
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th>NO.</th>
+                    <th>COMPANY SYMBOL</th>
+                    <th>INDICATORS</th>
+                    <th>TOTAL SIGNALS</th>
+                    <th>SUCCESS</th>
+                    <th>FAILURE</th>
+                    <th>OPEN</th>
+                    <th>SUCCESS %</th>
+                    <th>ACTION</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    results.forEach((result, index) => {
+        const successClass = result.successRate >= 50 ? 'success-high' : 'success-low';
+        const indicatorBadge = result.indicator_count > 1 ? 
+            `<span class="badge badge-power">${result.indicator_count} signals</span>` : '';
+        
+        html += `
+            <tr>
+                <td>${index + 1}</td>
+                <td>
+                    <strong>${result.symbol}</strong>
+                    ${indicatorBadge}
+                </td>
+                <td><small>${result.indicators}</small></td>
+                <td>${result.totalSignals}</td>
+                <td class="success-cell">${result.successful}</td>
+                <td class="failure-cell">${result.failed}</td>
+                <td class="open-cell">${result.open}</td>
+                <td class="${successClass}">${result.successRate}%</td>
+                <td>
+                    <a href="/symbol/${result.symbol}" class="btn btn-sm btn-primary" target="_blank">
+                        VIEW DETAILS
+                    </a>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
 
     container.innerHTML = html;
 }
@@ -907,6 +1031,8 @@ window.analyzeDashboardProgressive = analyzeDashboardFast;
 // =========================================================
 // GROUPED ANALYSIS - BY COMPANY
 // =========================================================
+// GROUPED ANALYSIS - BY COMPANY
+// =========================================================
 async function analyzeDashboardGrouped() {
     const target = document.getElementById('dashboardTarget').value;
     const days = document.getElementById('dashboardDays').value;
@@ -917,6 +1043,24 @@ async function analyzeDashboardGrouped() {
     }
 
     try {
+        // Check if we already have ungrouped results loaded
+        if (ungroupedResults && ungroupedResults.length > 0) {
+            // We have ungrouped data - group it instantly (no API call needed)
+            console.log('📊 [DASHBOARD] Grouping existing results...');
+            const startTime = performance.now();
+            
+            const groupedResults = groupResultsByCompany(ungroupedResults);
+            allResults = groupedResults; // Update allResults with grouped data
+            
+            const endTime = performance.now();
+            const totalTime = ((endTime - startTime) / 1000).toFixed(2);
+            console.log(`✅ [DASHBOARD] Grouped ${groupedResults.length} companies in ${totalTime}s`);
+            
+            displayGroupedResults(groupedResults, target, days);
+            return;
+        }
+
+        // No data loaded yet - fetch from API
         allResults = [];
         dashboardCurrentPage = 1;
 
@@ -956,6 +1100,63 @@ async function analyzeDashboardGrouped() {
         showError('Analysis failed: ' + error.message);
         document.getElementById('loadingState').classList.add('hidden');
     }
+}
+
+// Group ungrouped results by company (instant, no API call)
+function groupResultsByCompany(ungroupedResults) {
+    const grouped = {};
+    
+    ungroupedResults.forEach(result => {
+        const symbol = result.symbol;
+        
+        if (!grouped[symbol]) {
+            grouped[symbol] = {
+                symbol: symbol,
+                indicators: [],
+                totalSignals: 0,
+                successful: 0,
+                failed: 0,
+                open: 0,
+                completedTrades: 0
+            };
+        }
+        
+        grouped[symbol].indicators.push(result.indicator);
+        grouped[symbol].totalSignals += result.totalSignals || 0;
+        grouped[symbol].successful += result.successful || 0;
+        grouped[symbol].failed += result.failed || 0;
+        grouped[symbol].open += result.openTrades || 0;
+        grouped[symbol].completedTrades += result.completedTrades || 0;
+    });
+    
+    // Convert to array and calculate success rate
+    const results = Object.values(grouped).map(data => {
+        const successRate = data.completedTrades > 0 
+            ? ((data.successful / data.completedTrades) * 100).toFixed(2)
+            : 0;
+        
+        return {
+            symbol: data.symbol,
+            indicators: data.indicators.join(', '),
+            indicator_count: data.indicators.length,
+            totalSignals: data.totalSignals,
+            successful: data.successful,
+            failed: data.failed,
+            open: data.open,
+            completedTrades: data.completedTrades,
+            successRate: parseFloat(successRate)
+        };
+    });
+    
+    // Sort by success rate (highest first), then by symbol
+    results.sort((a, b) => {
+        if (b.successRate !== a.successRate) {
+            return b.successRate - a.successRate;
+        }
+        return a.symbol.localeCompare(b.symbol);
+    });
+    
+    return results;
 }
 
 // Display grouped results (one row per company)
@@ -1019,3 +1220,7 @@ function displayGroupedResults(results, target, days) {
 
     container.innerHTML = html;
 }
+
+// Expose grouped analysis function globally
+window.analyzeDashboardGrouped = analyzeDashboardGrouped;
+window.displayResults = displayResults;
