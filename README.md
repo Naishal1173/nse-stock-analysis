@@ -20,6 +20,14 @@ A fully automated stock analysis system for NSE (National Stock Exchange) that d
 - **Indicators Tracked**: 23 different indicator configurations
 - **System Status**: ✅ FULLY OPERATIONAL
 
+## 🌐 Live Demo
+
+Want to see it in action? Deploy to Render for free!
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com)
+
+See [RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md) for detailed deployment instructions.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
