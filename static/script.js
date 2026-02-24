@@ -354,12 +354,59 @@ async function loadSymbolIndicators() {
     }
 }
 
+// ============================================
+// FETCH SYMBOL DATE RANGE
+// ============================================
+async function fetchSymbolDateRange() {
+    if (typeof SYMBOL === 'undefined') return;
+    
+    try {
+        console.log(`📅 [DATE RANGE] Fetching date range for ${SYMBOL}...`);
+        
+        const response = await fetch(`/api/symbol/${encodeURIComponent(SYMBOL)}/date-range`);
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error(`❌ [DATE RANGE] Error: ${data.error}`);
+            return;
+        }
+        
+        const fromDateInput = document.getElementById('analysisFromDate');
+        const toDateInput = document.getElementById('analysisToDate');
+        
+        if (data.firstDate && data.lastDate) {
+            console.log(`📅 [DATE RANGE] Available data: ${data.firstDate} to ${data.lastDate}`);
+            
+            // Set min and max for both inputs
+            if (fromDateInput) {
+                fromDateInput.min = data.firstDate;
+                fromDateInput.max = data.lastDate;
+                fromDateInput.title = `Data available from ${data.firstDate} to ${data.lastDate}`;
+            }
+            
+            if (toDateInput) {
+                toDateInput.min = data.firstDate;
+                toDateInput.max = data.lastDate;
+                toDateInput.title = `Data available from ${data.firstDate} to ${data.lastDate}`;
+            }
+            
+            console.log(`✅ [DATE RANGE] Date constraints applied: ${data.firstDate} to ${data.lastDate}`);
+        } else {
+            console.warn(`⚠️ [DATE RANGE] No date range available for ${SYMBOL}`);
+        }
+    } catch (error) {
+        console.error(`❌ [DATE RANGE] Failed to fetch date range:`, error);
+    }
+}
+
 async function analyzeSymbol() {
     if (typeof SYMBOL === 'undefined') return;
 
     const indicator = document.getElementById('analysisIndicator').value;
     const target = document.getElementById('analysisTarget').value;
     const days = parseInt(document.getElementById('analysisDays').value);
+    const fromDate = document.getElementById('analysisFromDate').value;
+    const toDate = document.getElementById('analysisToDate').value;
 
     if (!indicator || !target || !days) {
         showNotification('Please fill in all fields: Indicator, Target %, and Days', 'warning');
@@ -382,12 +429,20 @@ async function analyzeSymbol() {
         analyzeBtn.disabled = true;
         analyzeBtn.textContent = 'ANALYZING...';
 
-        console.log(`📊 Analyzing ${SYMBOL} - ${indicator} with target=${target}%, days=${days}`);
+        console.log(`📊 Analyzing ${SYMBOL} - ${indicator} with target=${target}%, days=${days}, fromDate=${fromDate}, toDate=${toDate}`);
 
-        const url =
+        let url =
             `/api/analyze?symbol=${encodeURIComponent(SYMBOL)}` +
             `&indicator=${encodeURIComponent(indicator)}` +
             `&target=${target}&days=${days}`;
+        
+        // Add date filters if provided
+        if (fromDate) {
+            url += `&from_date=${fromDate}`;
+        }
+        if (toDate) {
+            url += `&to_date=${toDate}`;
+        }
 
         const res = await fetch(url);
         const data = await res.json();
@@ -406,6 +461,23 @@ async function analyzeSymbol() {
         document.getElementById('aOpen').textContent = data.openTrades;
         document.getElementById('aSuccess').textContent = data.successful;
         document.getElementById('aRate').textContent = data.successRate;
+        
+        // ---- Validation: Check if data exists in selected range ----
+        if (data.totalSignals === 0) {
+            console.log(`⚠️ [VALIDATION] No signals found`);
+            
+            if (fromDate || toDate) {
+                // Date filter applied but no data found
+                console.log(`📢 [NOTIFICATION] No data in selected range`);
+                showNotification('No historical data available in selected date range. Try expanding the date range.', 'warning');
+            } else {
+                // No date filter but still no data
+                console.log(`📢 [NOTIFICATION] No signals for indicator`);
+                showNotification('No historical BUY signals found for this indicator.', 'warning');
+            }
+        } else {
+            console.log(`✅ [VALIDATION] Found ${data.totalSignals} signals`);
+        }
         
         // Update profit/loss if elements exist
         if (document.getElementById('aAvgProfit')) {
@@ -660,8 +732,8 @@ async function loadChartIndicators() {
         
         console.log('✅ [CHART] All chart indicators loaded successfully');
         
-        // Also load analysis indicators
-        loadAnalysisIndicators(indicators);
+        // Also load analysis indicators (await to ensure dropdown is populated)
+        await loadAnalysisIndicators(indicators);
         
     } catch (error) {
         console.error('❌ [CHART] Failed to load chart indicators:', error);
@@ -1940,6 +2012,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Don't load indicator table on page load - it's slow
         // loadSymbolIndicators();
         
+        // Fetch and apply date range constraints for this symbol
+        fetchSymbolDateRange();
+        
         // Load chart indicators first, then update chart with defaults
         loadChartIndicators().then(() => {
             console.log('📊 [INIT] Chart indicators loaded, setting defaults...');
@@ -1975,9 +2050,27 @@ document.addEventListener('DOMContentLoaded', function() {
             // NOW check URL parameters and auto-run analysis (AFTER indicators are loaded)
             const params = new URLSearchParams(window.location.search);
             const urlIndicator = params.get('indicator');
+            const urlTarget = params.get('target');
+            const urlDays = params.get('days');
             
             console.log(`📊 [AUTO] URL search params: ${window.location.search}`);
             console.log(`📊 [AUTO] URL indicator parameter: ${urlIndicator}`);
+            console.log(`📊 [AUTO] URL target parameter: ${urlTarget}`);
+            console.log(`📊 [AUTO] URL days parameter: ${urlDays}`);
+            
+            // Populate target and days inputs if provided in URL (overrides HTML defaults)
+            const targetInput = document.getElementById('analysisTarget');
+            const daysInput = document.getElementById('analysisDays');
+            
+            if (urlTarget && targetInput) {
+                targetInput.value = urlTarget;
+                console.log(`📊 [AUTO] Set target input to: ${urlTarget}%`);
+            }
+            
+            if (urlDays && daysInput) {
+                daysInput.value = urlDays;
+                console.log(`📊 [AUTO] Set days input to: ${urlDays}`);
+            }
             
             if (urlIndicator) {
                 // URL has indicator parameter - use it
@@ -2025,9 +2118,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log(`📊 [AUTO] Auto-selected: ${analysisSelect.value}`);
                     
                     // Auto-run analysis with default values
-                    const targetInput = document.getElementById('analysisTarget');
-                    const daysInput = document.getElementById('analysisDays');
-                    
                     if (targetInput && daysInput && targetInput.value && daysInput.value) {
                         console.log(`📊 [AUTO] Running auto-analysis with target=${targetInput.value}%, days=${daysInput.value}`);
                         setTimeout(() => {
@@ -2050,6 +2140,192 @@ document.addEventListener('DOMContentLoaded', function() {
         const analyzeBtn = document.getElementById('analyzeBtn');
         if (analyzeBtn) {
             analyzeBtn.addEventListener('click', analyzeSymbol);
+        }
+        
+        // Add event listeners for date filters to auto-reanalyze
+        const fromDateInput = document.getElementById('analysisFromDate');
+        const toDateInput = document.getElementById('analysisToDate');
+        
+        // Set max date to today for both inputs
+        const today = new Date().toISOString().split('T')[0];
+        if (fromDateInput) {
+            fromDateInput.max = today;
+        }
+        if (toDateInput) {
+            toDateInput.max = today;
+        }
+        
+        // Check if a date input has a valid, complete date
+        function isValidDate(dateString) {
+            if (!dateString) return true; // Empty is valid (means no filter)
+            
+            // Check format YYYY-MM-DD
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(dateString)) {
+                return false;
+            }
+            
+            // Check if it's a valid date
+            const date = new Date(dateString);
+            return date instanceof Date && !isNaN(date);
+        }
+        
+        // Update date input constraints dynamically
+        function updateDateConstraints() {
+            if (fromDateInput && toDateInput) {
+                // If from date is set, set it as min for to date
+                if (fromDateInput.value && isValidDate(fromDateInput.value)) {
+                    toDateInput.min = fromDateInput.value;
+                } else {
+                    toDateInput.min = '2000-01-01';
+                }
+                
+                // If to date is set, set it as max for from date
+                if (toDateInput.value && isValidDate(toDateInput.value)) {
+                    fromDateInput.max = toDateInput.value;
+                } else {
+                    fromDateInput.max = today; // Use today as max
+                }
+            }
+        }
+        
+        // Validation function for date range
+        function validateDateRange() {
+            const fromDate = fromDateInput.value;
+            const toDate = toDateInput.value;
+            const todayDate = new Date(today);
+            
+            // Get the min/max from the input constraints (set by fetchSymbolDateRange)
+            const minDate = fromDateInput.min ? new Date(fromDateInput.min) : null;
+            const maxDate = fromDateInput.max ? new Date(fromDateInput.max) : todayDate;
+            
+            // Check if dates are valid format
+            if (fromDate && !isValidDate(fromDate)) {
+                showNotification('Invalid From date format. Use YYYY-MM-DD', 'warning');
+                return false;
+            }
+            
+            if (toDate && !isValidDate(toDate)) {
+                showNotification('Invalid To date format. Use YYYY-MM-DD', 'warning');
+                return false;
+            }
+            
+            // Check if dates are within available range
+            if (fromDate && minDate) {
+                const from = new Date(fromDate);
+                if (from < minDate) {
+                    showNotification(`From date cannot be before ${fromDateInput.min}. No data available before this date.`, 'warning');
+                    fromDateInput.value = ''; // Clear invalid date
+                    return false;
+                }
+            }
+            
+            if (toDate && maxDate) {
+                const to = new Date(toDate);
+                if (to > maxDate) {
+                    showNotification(`To date cannot be after ${toDateInput.max}. No data available after this date.`, 'warning');
+                    toDateInput.value = ''; // Clear invalid date
+                    return false;
+                }
+            }
+            
+            // Check if dates are in the future
+            if (fromDate) {
+                const from = new Date(fromDate);
+                if (from > todayDate) {
+                    showNotification('From date cannot be in the future', 'warning');
+                    fromDateInput.value = ''; // Clear invalid date
+                    return false;
+                }
+            }
+            
+            if (toDate) {
+                const to = new Date(toDate);
+                if (to > todayDate) {
+                    showNotification('To date cannot be in the future', 'warning');
+                    toDateInput.value = ''; // Clear invalid date
+                    return false;
+                }
+            }
+            
+            // If both dates are set, validate the range
+            if (fromDate && toDate) {
+                const from = new Date(fromDate);
+                const to = new Date(toDate);
+                
+                if (from > to) {
+                    showNotification('From date cannot be after To date', 'warning');
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+        
+        if (fromDateInput) {
+            // Use 'blur' event instead of 'change' to ensure complete input
+            fromDateInput.addEventListener('blur', function() {
+                // Only validate and analyze if there's a value
+                if (this.value) {
+                    updateDateConstraints();
+                    
+                    // Only auto-analyze if an indicator is already selected
+                    const indicator = document.getElementById('analysisIndicator').value;
+                    if (indicator) {
+                        if (validateDateRange()) {
+                            console.log('📅 [DATE FILTER] From date changed, re-analyzing...');
+                            analyzeSymbol();
+                        } else {
+                            console.log('❌ [DATE FILTER] Invalid date range');
+                        }
+                    }
+                }
+            });
+            
+            // Also handle when date is cleared
+            fromDateInput.addEventListener('change', function() {
+                if (!this.value) {
+                    updateDateConstraints();
+                    const indicator = document.getElementById('analysisIndicator').value;
+                    if (indicator) {
+                        console.log('📅 [DATE FILTER] From date cleared, re-analyzing...');
+                        analyzeSymbol();
+                    }
+                }
+            });
+        }
+        
+        if (toDateInput) {
+            // Use 'blur' event instead of 'change' to ensure complete input
+            toDateInput.addEventListener('blur', function() {
+                // Only validate and analyze if there's a value
+                if (this.value) {
+                    updateDateConstraints();
+                    
+                    // Only auto-analyze if an indicator is already selected
+                    const indicator = document.getElementById('analysisIndicator').value;
+                    if (indicator) {
+                        if (validateDateRange()) {
+                            console.log('📅 [DATE FILTER] To date changed, re-analyzing...');
+                            analyzeSymbol();
+                        } else {
+                            console.log('❌ [DATE FILTER] Invalid date range');
+                        }
+                    }
+                }
+            });
+            
+            // Also handle when date is cleared
+            toDateInput.addEventListener('change', function() {
+                if (!this.value) {
+                    updateDateConstraints();
+                    const indicator = document.getElementById('analysisIndicator').value;
+                    if (indicator) {
+                        console.log('📅 [DATE FILTER] To date cleared, re-analyzing...');
+                        analyzeSymbol();
+                    }
+                }
+            });
         }
         
         // Load indicators on demand

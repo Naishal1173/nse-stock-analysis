@@ -977,11 +977,83 @@ body {
     line-height: 1.5;
 }
 
+/* Details Section Header with Filters */
+.details-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
 .details-section h4 {
     font-size: 1rem;
     font-weight: 600;
     color: #1e293b;
-    margin-bottom: 1rem;
+    margin: 0;
+}
+
+.details-filters {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.filter-group label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.date-filter-input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    color: #1e293b;
+    background-color: #ffffff;
+    transition: all 0.2s;
+    min-width: 150px;
+}
+
+.date-filter-input:hover {
+    border-color: #94a3b8;
+}
+
+.date-filter-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .details-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .details-filters {
+        width: 100%;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .filter-group {
+        width: 100%;
+    }
+    
+    .date-filter-input {
+        width: 100%;
+    }
 }
 
 .details-table-container {

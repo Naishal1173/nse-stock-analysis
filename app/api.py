@@ -76,7 +76,9 @@ def _analyze_single_indicator_optimized(
     target: float, 
     days: int,
     request_cache: Dict[str, Tuple[List, List]] = None,
-    include_details: bool = False  # NEW: Skip details for faster processing
+    include_details: bool = False,  # Skip details for faster processing
+    from_date: str = None,  # NEW: Start date filter (YYYY-MM-DD)
+    to_date: str = None  # NEW: End date filter (YYYY-MM-DD)
 ) -> dict:
     """
     OPTIMIZED VERSION with request-scoped caching
@@ -113,19 +115,53 @@ def _analyze_single_indicator_optimized(
     table, indicator_col, value_col, indicator_value = config
 
     # ------------------------------------------
-    # 2. Fetch BUY signals - OPTIMIZED with index
+    # 2. Fetch BUY signals - OPTIMIZED with index + DATE FILTER
     # ------------------------------------------
-    cur.execute(f"""
+    # Build date filter based on from_date and to_date
+    date_filter_sql = ""
+    query_params = [symbol, indicator_value]
+    
+    if from_date:
+        try:
+            # Validate date format
+            datetime.strptime(from_date, '%Y-%m-%d')
+            date_filter_sql += " AND trade_date >= %s"
+            query_params.append(from_date)
+        except (ValueError, TypeError):
+            # Invalid date format, ignore
+            pass
+    
+    if to_date:
+        try:
+            # Validate date format
+            datetime.strptime(to_date, '%Y-%m-%d')
+            date_filter_sql += " AND trade_date <= %s"
+            query_params.append(to_date)
+        except (ValueError, TypeError):
+            # Invalid date format, ignore
+            pass
+    
+    query = f"""
         SELECT trade_date
         FROM {table}
         WHERE symbol = %s
           AND {indicator_col} = %s
           AND signal = 'BUY'
+          {date_filter_sql}
         ORDER BY trade_date
-    """, (symbol, indicator_value))
+    """
+    
+    print(f"[DATE FILTER] Query: {query}")
+    print(f"[DATE FILTER] Params: {query_params}")
+    
+    cur.execute(query, tuple(query_params))
 
     buy_dates = [row[0] for row in cur.fetchall()]
     total_buy_signals = len(buy_dates)
+    
+    print(f"[DATE FILTER] Found {total_buy_signals} BUY signals")
+    if total_buy_signals > 0:
+        print(f"[DATE FILTER] First signal: {buy_dates[0]}, Last signal: {buy_dates[-1]}")
 
     if total_buy_signals == 0:
         return {
@@ -280,6 +316,7 @@ def _analyze_single_indicator_optimized(
     # ------------------------------------------
     completed_count = len(completed_trades)
     successful = sum(1 for p in completed_trades if p >= target)
+    failed = completed_count - successful  # Calculate failed trades
 
     success_rate = (successful / completed_count * 100) if completed_count else 0
 
@@ -298,6 +335,7 @@ def _analyze_single_indicator_optimized(
         "completedTrades": completed_count,
         "openTrades": open_trades,
         "successful": successful,
+        "failed": failed,  # Add failed field
         "successRate": round(success_rate, 2),
         "avgMaxProfit": round(avg_max_profit, 2),
         "avgMaxLoss": round(avg_max_loss, 2),
@@ -489,20 +527,80 @@ def analyze_all_signals_optimized(
 # =========================================================
 # SINGLE INDICATOR ANALYSIS ENDPOINT
 # =========================================================
+@app.get("/api/symbol/{symbol}/date-range")
+def get_symbol_date_range(symbol: str):
+    """Get the earliest and latest BUY signal date available for a symbol across all indicators"""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        
+        # Query all signal tables to find the earliest and latest BUY signal dates
+        # We need to check all tables: smatbl, rsitbl, bbtbl, macdtbl, stochtbl
+        
+        tables = ['smatbl', 'rsitbl', 'bbtbl', 'macdtbl', 'stochtbl']
+        all_dates = []
+        
+        for table in tables:
+            try:
+                cur.execute(f"""
+                    SELECT MIN(trade_date) as first_date, MAX(trade_date) as last_date
+                    FROM {table}
+                    WHERE symbol = %s AND signal = 'BUY'
+                """, (symbol,))
+                
+                result = cur.fetchone()
+                if result and result[0] and result[1]:
+                    all_dates.append(result[0])  # first_date
+                    all_dates.append(result[1])  # last_date
+            except Exception as e:
+                print(f"[DATE RANGE] Error querying {table}: {e}")
+                continue
+        
+        if all_dates:
+            first_date = min(all_dates)
+            last_date = max(all_dates)
+            
+            print(f"[DATE RANGE] {symbol}: {first_date} to {last_date}")
+            
+            return {
+                "symbol": symbol,
+                "firstDate": first_date.isoformat(),
+                "lastDate": last_date.isoformat()
+            }
+        else:
+            return {
+                "symbol": symbol,
+                "firstDate": None,
+                "lastDate": None,
+                "error": "No BUY signals available for this symbol"
+            }
+    except Exception as e:
+        print(f"[DATE RANGE] Error: {e}")
+        return {"error": str(e)}
+    finally:
+        cur.close()
+        return_db(conn)
+
 @app.get("/api/analyze")
 def analyze_indicator(
     symbol: str = Query(...),
     indicator: str = Query(...),
     target: float = Query(5.0),
-    days: int = Query(30)
+    days: int = Query(30),
+    from_date: str = Query(None, description="Start date filter (YYYY-MM-DD)"),
+    to_date: str = Query(None, description="End date filter (YYYY-MM-DD)")
 ):
-    """Analyze historical performance of an indicator for a symbol"""
+    """Analyze historical performance of an indicator for a symbol with optional date range filter"""
+    print(f"[ANALYZE API] symbol={symbol}, indicator={indicator}, target={target}, days={days}, from_date={from_date}, to_date={to_date}")
     conn = get_db()
     try:
         cur = conn.cursor()
         # Include details for single symbol analysis (user wants to see trade history)
-        return _analyze_single_indicator_optimized(cur, symbol, indicator, target, days, None, include_details=True)
+        result = _analyze_single_indicator_optimized(cur, symbol, indicator, target, days, None, include_details=True, from_date=from_date, to_date=to_date)
+        print(f"[ANALYZE API] Result: totalSignals={result.get('totalSignals', 0)}")
+        return result
     except Exception as e:
+        print(f"[ANALYZE API] Error: {e}")
         return {"error": str(e)}
     finally:
         cur.close()
@@ -689,6 +787,10 @@ def symbol_page(request: Request, symbol: str):
 @app.get("/diagnostic", response_class=HTMLResponse)
 def diagnostic_page(request: Request):
     return templates.TemplateResponse("diagnostic.html", {"request": request})
+
+@app.get("/indicator-analytics", response_class=HTMLResponse)
+def indicator_analytics_page(request: Request):
+    return templates.TemplateResponse("indicator_analytics.html", {"request": request})
 
 @app.get("/api/symbols")
 def get_symbols(q: str = Query("")):
@@ -1099,8 +1201,6 @@ def indicators_list():
         _indicators_cache = indicator_list
         _indicators_cache_time = current_time
         
-        print(f"[API] Found {len(indicator_list)} indicators with BUY signals (cached for 5 min)")
-        
         return indicator_list
         
     except Exception as e:
@@ -1228,6 +1328,165 @@ def health_check():
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
 
+# =========================================================
+# INDICATOR ANALYTICS ENDPOINT
+# =========================================================
+@app.get("/api/indicator-analytics")
+def indicator_analytics(
+    target: float = Query(5.0, description="Target profit percentage"),
+    days: int = Query(30, description="Days to hold position")
+):
+    """
+    OPTIMIZED: Aggregate analysis results BY INDICATOR.
+    Uses batch processing and request-scoped caching for speed.
+    """
+    start_time = time.time()
+    conn = get_db()
+    request_cache = {}
+
+    try:
+        cur = conn.cursor()
+        
+        print(f"[INDICATOR-ANALYTICS] Starting optimized analysis for target={target}%, days={days}")
+
+        # Get all latest BUY signals grouped by indicator first
+        cur.execute("""
+            SELECT indicator, symbol
+            FROM latest_buy_signals
+            ORDER BY indicator, symbol
+        """)
+        signals = cur.fetchall()
+
+        if not signals:
+            return {"indicators": [], "target_profit": target, "days_to_hold": days}
+
+        print(f"[INDICATOR-ANALYTICS] Found {len(signals)} signals to analyze")
+
+        # Batch load ALL prices at once (this is the key optimization)
+        unique_symbols = list(set(s[1] for s in signals))
+        print(f"[INDICATOR-ANALYTICS] Batch loading prices for {len(unique_symbols)} symbols...")
+        
+        prices_start = time.time()
+        prices_data = _batch_load_prices(cur, unique_symbols)
+        request_cache.update(prices_data)
+        prices_elapsed = time.time() - prices_start
+        print(f"[INDICATOR-ANALYTICS] Prices loaded in {prices_elapsed:.2f}s")
+        
+        # Now analyze all signals with cached prices (much faster)
+        print(f"[INDICATOR-ANALYTICS] Analyzing signals with cached prices...")
+        analysis_start = time.time()
+        
+        # Group by indicator for aggregation
+        indicator_map = {}
+        
+        for indicator, symbol in signals:
+            # Analyze this signal using cached prices
+            result = _analyze_single_indicator_optimized(
+                cur, symbol, indicator, target, days,
+                request_cache, include_details=False
+            )
+            
+            # Normalize MACD display names
+            display_name = indicator
+            if indicator in ('Short', 'Long', 'Standard'):
+                display_name = f'MACD_{indicator}'
+            
+            if indicator not in indicator_map:
+                indicator_map[indicator] = {
+                    'indicator': indicator,
+                    'displayName': display_name,
+                    'totalSignals': 0,
+                    'successful': 0,
+                    'failed': 0,
+                    'open': 0,
+                    'companies': {}
+                }
+            
+            entry = indicator_map[indicator]
+            entry['totalSignals'] += result.get('totalSignals', 0)
+            entry['successful'] += result.get('successful', 0)
+            entry['failed'] += result.get('failed', 0)
+            entry['open'] += result.get('openTrades', 0)
+            
+            # Track per-company stats
+            if symbol not in entry['companies']:
+                entry['companies'][symbol] = {
+                    'symbol': symbol,
+                    'totalSignals': 0,
+                    'successful': 0,
+                    'failed': 0,
+                    'open': 0
+                }
+            c = entry['companies'][symbol]
+            c['totalSignals'] += result.get('totalSignals', 0)
+            c['successful'] += result.get('successful', 0)
+            c['failed'] += result.get('failed', 0)
+            c['open'] += result.get('openTrades', 0)
+        
+        analysis_elapsed = time.time() - analysis_start
+        print(f"[INDICATOR-ANALYTICS] Analysis completed in {analysis_elapsed:.2f}s")
+        
+        # Build final response
+        indicator_list = []
+        for ind, data in indicator_map.items():
+            completed = data['successful'] + data['failed']
+            success_rate = round((data['successful'] / completed * 100), 2) if completed > 0 else 0
+
+            companies = []
+            for sym, cd in data['companies'].items():
+                comp_completed = cd['successful'] + cd['failed']
+                comp_rate = round((cd['successful'] / comp_completed * 100), 2) if comp_completed > 0 else 0
+                companies.append({
+                    'symbol': cd['symbol'],
+                    'totalSignals': cd['totalSignals'],
+                    'successful': cd['successful'],
+                    'failed': cd['failed'],
+                    'open': cd['open'],
+                    'successRate': comp_rate
+                })
+
+            # Sort companies by success rate desc
+            companies.sort(key=lambda x: (-x['successRate'], x['symbol']))
+
+            indicator_list.append({
+                'indicator': data['indicator'],
+                'displayName': data['displayName'],
+                'totalSignals': data['totalSignals'],
+                'successful': data['successful'],
+                'failed': data['failed'],
+                'open': data['open'],
+                'successRate': success_rate,
+                'uniqueCompanies': len(companies),
+                'companies': companies
+            })
+
+        # Sort indicators by success rate desc
+        indicator_list.sort(key=lambda x: (-x['successRate'], x['displayName']))
+
+        elapsed = time.time() - start_time
+        print(f"[INDICATOR-ANALYTICS] COMPLETE: Analyzed {len(signals)} signals across {len(indicator_list)} indicators in {elapsed:.2f}s")
+
+        return {
+            'indicators': indicator_list,
+            'target_profit': target,
+            'days_to_hold': days,
+            'total_signals': len(signals),
+            'processing_time_seconds': round(elapsed, 2)
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': str(e), 'indicators': []}
+    finally:
+        request_cache.clear()
+        try:
+            cur.close()
+            return_db(conn)
+        except:
+            pass
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
@@ -1241,7 +1500,8 @@ def analyze_progressive(
     target: float = Query(5.0, description="Target profit percentage"),
     days: int = Query(30, description="Days to hold position"),
     batch_size: int = Query(50, ge=10, le=10000, description="Batch size (10-10000)"),
-    offset: int = Query(0, ge=0, description="Offset for pagination")
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    indicators: str = Query(None, description="Comma-separated list of indicators to filter")
 ):
     """
     PROGRESSIVE LOADING - Returns results in batches
@@ -1262,20 +1522,36 @@ def analyze_progressive(
     try:
         cur = conn.cursor()
         
+        # Build WHERE clause for indicator filtering
+        indicator_filter = ""
+        if indicators:
+            indicator_list = [ind.strip() for ind in indicators.split(',')]
+            placeholders = ','.join(['?' for _ in indicator_list])
+            indicator_filter = f" WHERE indicator IN ({placeholders})"
+            print(f"[PROGRESSIVE] Filtering by indicators: {indicator_list}")
+        
         # Get total count first
-        cur.execute("SELECT COUNT(*) FROM latest_buy_signals")
+        count_query = f"SELECT COUNT(*) FROM latest_buy_signals{indicator_filter}"
+        if indicators:
+            cur.execute(count_query, indicator_list)
+        else:
+            cur.execute(count_query)
         total_signals = cur.fetchone()[0]
         
         # FIRST BATCH: Analyze ALL signals and sort
         if offset == 0:
             print(f"[PROGRESSIVE] First batch - analyzing ALL {total_signals} signals...")
             
-            # Get ALL signals
-            cur.execute("""
+            # Get ALL signals (with optional indicator filter)
+            signals_query = f"""
                 SELECT symbol, indicator
-                FROM latest_buy_signals
+                FROM latest_buy_signals{indicator_filter}
                 ORDER BY symbol, indicator
-            """)
+            """
+            if indicators:
+                cur.execute(signals_query, indicator_list)
+            else:
+                cur.execute(signals_query)
             
             all_signals = cur.fetchall()
             
@@ -1310,6 +1586,7 @@ def analyze_progressive(
                 'results': all_results,
                 'target': target,
                 'days': days,
+                'indicators': indicators,
                 'timestamp': time.time()
             }
             
@@ -1560,6 +1837,7 @@ def analyze_grouped(
                 grouped[symbol] = {
                     'symbol': symbol,
                     'indicators': [],
+                    'first_indicator': result.get('indicator'),  # Store first indicator
                     'total_signals': 0,
                     'successful': 0,
                     'failed': 0,
@@ -1584,6 +1862,7 @@ def analyze_grouped(
             final_results.append({
                 'symbol': symbol,
                 'indicators': ', '.join(data['indicators']),
+                'firstIndicator': data['first_indicator'],  # Include first indicator
                 'indicator_count': len(data['indicators']),
                 'totalSignals': data['total_signals'],
                 'successful': data['successful'],

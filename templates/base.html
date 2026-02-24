@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}NSE Stock Analysis{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css?v=2.5">
-    <link rel="stylesheet" href="/static/dashboard-new.css?v=3.0">
+    <link rel="stylesheet" href="/static/style.css?v=2.6">
+    <link rel="stylesheet" href="/static/dashboard-new.css?v=4.0">
     <script src="/static/lightweight-charts.js"></script>
+    {% block extra_head %}{% endblock %}
 </head>
+
 <body>
     <nav class="navbar">
         <div class="nav-container">
@@ -21,7 +24,8 @@
         {% block content %}{% endblock %}
     </main>
 
-    <script src="/static/script.js?v=3.8"></script>
+    <script src="/static/script.js?v=4.9"></script>
 
 </body>
+
 </html>

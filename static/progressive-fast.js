@@ -15,6 +15,14 @@ async function analyzeDashboardFast() {
         return;
     }
 
+    // Check if data already exists and indicators are selected
+    if (allResults && allResults.length > 0 && selectedIndicators.length > 0) {
+        // Data already loaded - just filter the existing data
+        console.log('📊 [DASHBOARD] Data already loaded, filtering locally...');
+        filterBySelectedIndicators();
+        return;
+    }
+
     try {
         allResults = [];
         dashboardCurrentPage = 1;
@@ -25,9 +33,22 @@ async function analyzeDashboardFast() {
         console.log('📊 [DASHBOARD] Starting PROGRESSIVE analysis...');
         const startTime = performance.now();
 
+        // Build URL with optional indicator filter
+        let firstUrl = `/api/analyze-progressive?target=${target}&days=${days}&batch_size=50&offset=0`;
+        
+        // Add indicator filter if indicators are selected
+        if (selectedIndicators.length > 0) {
+            const indicators = selectedIndicators.map(ind => {
+                // Convert display names back to API names
+                if (ind.startsWith('MACD_')) return ind.replace('MACD_', '');
+                return ind;
+            }).join(',');
+            firstUrl += `&indicators=${encodeURIComponent(indicators)}`;
+            console.log('📊 [DASHBOARD] Fetching with indicator filter:', indicators);
+        }
+
         // STEP 1: Get first 50 results (backend analyzes ALL, returns first 50)
         console.log('📊 [DASHBOARD] Loading first 50 results...');
-        const firstUrl = `/api/analyze-progressive?target=${target}&days=${days}&batch_size=50&offset=0`;
         const firstResponse = await fetch(firstUrl);
         const firstData = await firstResponse.json();
 
@@ -46,17 +67,7 @@ async function analyzeDashboardFast() {
         document.getElementById('loadingState').classList.add('hidden');
         document.getElementById('resultsSection').classList.remove('hidden');
         
-        let filteredResults = allResults;
-        if (selectedIndicators.length > 0) {
-            filteredResults = allResults.filter(r => {
-                let resultIndicator = r.indicator;
-                if (resultIndicator === 'Short' || resultIndicator === 'Long' || resultIndicator === 'Standard') {
-                    resultIndicator = `MACD_${resultIndicator}`;
-                }
-                return selectedIndicators.includes(resultIndicator);
-            });
-        }
-        filteredResults = applySmartSorting(filteredResults);
+        let filteredResults = applySmartSorting(allResults);
         
         displayResultsWithProgress(filteredResults, target, days, {
             isPartial: true,
@@ -70,7 +81,17 @@ async function analyzeDashboardFast() {
             
             // Request ALL remaining results at once (batch_size = total - 50)
             const remainingSize = totalSignals - 50;
-            const remainingUrl = `/api/analyze-progressive?target=${target}&days=${days}&batch_size=${remainingSize}&offset=50`;
+            let remainingUrl = `/api/analyze-progressive?target=${target}&days=${days}&batch_size=${remainingSize}&offset=50`;
+            
+            // Add indicator filter to remaining request too
+            if (selectedIndicators.length > 0) {
+                const indicators = selectedIndicators.map(ind => {
+                    if (ind.startsWith('MACD_')) return ind.replace('MACD_', '');
+                    return ind;
+                }).join(',');
+                remainingUrl += `&indicators=${encodeURIComponent(indicators)}`;
+            }
+            
             const remainingResponse = await fetch(remainingUrl);
             const remainingData = await remainingResponse.json();
 
@@ -78,18 +99,8 @@ async function analyzeDashboardFast() {
                 allResults = allResults.concat(remainingData.results);
                 console.log(`✅ [DASHBOARD] All ${allResults.length} results loaded!`);
                 
-                // Apply filters and sorting to all results
-                filteredResults = allResults;
-                if (selectedIndicators.length > 0) {
-                    filteredResults = allResults.filter(r => {
-                        let resultIndicator = r.indicator;
-                        if (resultIndicator === 'Short' || resultIndicator === 'Long' || resultIndicator === 'Standard') {
-                            resultIndicator = `MACD_${resultIndicator}`;
-                        }
-                        return selectedIndicators.includes(resultIndicator);
-                    });
-                }
-                filteredResults = applySmartSorting(filteredResults);
+                // Apply sorting to all results
+                filteredResults = applySmartSorting(allResults);
                 allResults = filteredResults;
                 
                 // Store ungrouped results for fast toggling
@@ -116,6 +127,45 @@ async function analyzeDashboardFast() {
         console.error('ERROR:', error);
         document.getElementById('loadingState').classList.add('hidden');
     }
+}
+
+function filterExistingDashboardData(selectedFilterOptions) {
+    if (!allResults || allResults.length === 0) {
+        console.log('[DASHBOARD] No data to filter');
+        return;
+    }
+
+    // If "all" is selected or nothing selected, show all
+    if (selectedFilterOptions.includes('all') || selectedFilterOptions.length === 0) {
+        displayResults(allResults, null, null);
+        showNotification(`Showing all ${allResults.length} signals`, 'success');
+        return;
+    }
+
+    // Filter to only selected indicators
+    const filteredResults = allResults.filter(result => {
+        let resultIndicator = result.indicator;
+        
+        // Handle MACD naming
+        if (resultIndicator === 'Short' || resultIndicator === 'Long' || resultIndicator === 'Standard') {
+            resultIndicator = `MACD_${resultIndicator}`;
+        }
+        
+        // Check if this indicator is in the selected list
+        return selectedFilterOptions.some(sel => {
+            // Handle MACD_ prefix in selection
+            if (sel.startsWith('MACD_')) {
+                return resultIndicator === sel;
+            }
+            return resultIndicator === sel || result.indicator === sel;
+        });
+    });
+
+    // Re-render with filtered data
+    dashboardCurrentPage = 1; // Reset to page 1
+    displayResults(filteredResults, null, null);
+    
+    showNotification(`Filtered to ${filteredResults.length} signal(s) from ${selectedFilterOptions.length} indicator(s)`, 'success');
 }
 
 // Filter companies by minimum number of signals
@@ -486,10 +536,54 @@ function setupIndicatorFiltering() {
             }
         }
         
-        if (selectedIndicators.length > 0) {
-            showNotification(`${selectedIndicators.length} indicator(s) selected. Click ANALYZE to see results.`, 'info');
+        // Smart filtering: If data already loaded, filter immediately
+        if (allResults && allResults.length > 0) {
+            console.log('[INDICATOR] Data already loaded, filtering immediately...');
+            filterBySelectedIndicators();
+        } else {
+            // No data yet - just show notification
+            if (selectedIndicators.length > 0) {
+                showNotification(`${selectedIndicators.length} indicator(s) selected. Click ANALYZE to see results.`, 'info');
+            }
         }
     });
+}
+
+// Filter existing results by selected indicators
+function filterBySelectedIndicators() {
+    if (!allResults || allResults.length === 0) {
+        console.log('[INDICATOR] No data to filter');
+        return;
+    }
+
+    let filteredResults;
+    
+    // If no indicators selected, show all
+    if (selectedIndicators.length === 0) {
+        filteredResults = [...allResults];
+        showNotification(`Showing all ${filteredResults.length} signals`, 'success');
+    } else {
+        // Filter to only selected indicators
+        filteredResults = allResults.filter(result => {
+            let resultIndicator = result.indicator;
+            
+            // Handle MACD naming
+            if (resultIndicator === 'Short' || resultIndicator === 'Long' || resultIndicator === 'Standard') {
+                resultIndicator = `MACD_${resultIndicator}`;
+            }
+            
+            return selectedIndicators.includes(resultIndicator);
+        });
+        
+        showNotification(`Filtered to ${filteredResults.length} signal(s) from ${selectedIndicators.length} indicator(s)`, 'success');
+    }
+
+    // Apply smart sorting to filtered results
+    filteredResults = applySmartSorting(filteredResults);
+
+    // Re-render with filtered and sorted data
+    dashboardCurrentPage = 1; // Reset to page 1
+    displayResults(filteredResults, null, null);
 }
 
 // Smart search - searches ALL results across all pages
@@ -750,6 +844,10 @@ function displaySearchResultsGrouped(results, searchTerm) {
         container.innerHTML = `<div class="empty-state">No results found for "${searchTerm}"</div>`;
         return;
     }
+    
+    // Get target and days for URL parameters
+    const target = document.getElementById('dashboardTarget').value || '5';
+    const days = document.getElementById('dashboardDays').value || '30';
 
     let html = `
         <div class="results-progress-header">
@@ -777,6 +875,9 @@ function displaySearchResultsGrouped(results, searchTerm) {
         const indicatorBadge = result.indicator_count > 1 ? 
             `<span class="badge badge-power">${result.indicator_count} signals</span>` : '';
         
+        // Build URL with first indicator, target, and days
+        const viewDetailsUrl = `/symbol/${result.symbol}?indicator=${encodeURIComponent(result.firstIndicator)}&target=${target}&days=${days}`;
+        
         html += `
             <tr>
                 <td>${index + 1}</td>
@@ -791,7 +892,7 @@ function displaySearchResultsGrouped(results, searchTerm) {
                 <td class="open-cell">${result.open}</td>
                 <td class="${successClass}">${result.successRate}%</td>
                 <td>
-                    <a href="/symbol/${result.symbol}" class="btn btn-sm btn-primary" target="_blank">
+                    <a href="${viewDetailsUrl}" class="btn btn-sm btn-primary" target="_blank">
                         VIEW DETAILS
                     </a>
                 </td>
@@ -1135,9 +1236,13 @@ function groupResultsByCompany(ungroupedResults) {
             ? ((data.successful / data.completedTrades) * 100).toFixed(2)
             : 0;
         
+        // First indicator is the first one in the indicators array
+        const firstIndicator = data.indicators[0];
+        
         return {
             symbol: data.symbol,
             indicators: data.indicators.join(', '),
+            firstIndicator: firstIndicator,  // Use first from array
             indicator_count: data.indicators.length,
             totalSignals: data.totalSignals,
             successful: data.successful,
@@ -1191,6 +1296,9 @@ function displayGroupedResults(results, target, days) {
         const indicatorBadge = result.indicator_count > 1 ? 
             `<span class="badge badge-power">${result.indicator_count} signals</span>` : '';
         
+        // Build URL with first indicator, target, and days
+        const viewDetailsUrl = `/symbol/${result.symbol}?indicator=${encodeURIComponent(result.firstIndicator)}&target=${target}&days=${days}`;
+        
         html += `
             <tr>
                 <td>${index + 1}</td>
@@ -1205,7 +1313,7 @@ function displayGroupedResults(results, target, days) {
                 <td class="open-cell">${result.open}</td>
                 <td class="${successClass}">${result.successRate}%</td>
                 <td>
-                    <a href="/symbol/${result.symbol}" class="btn btn-sm btn-primary" target="_blank">
+                    <a href="${viewDetailsUrl}" class="btn btn-sm btn-primary" target="_blank">
                         VIEW DETAILS
                     </a>
                 </td>

@@ -33,7 +33,7 @@ HEADERS = {
 # INDICATOR SETTINGS
 # =========================================================
 
-SMA_PERIODS = [5, 10, 20, 30, 50, 100, 200]
+SMA_PERIODS = [5, 10, 20, 50, 100, 200]
 RSI_PERIODS = [7, 14, 21, 50, 80]
 
 RSI_BUY_LEVEL = 30

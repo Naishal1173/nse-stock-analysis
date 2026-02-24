@@ -10,79 +10,54 @@
             <div class="header-title-section">
                 <h1>Historical BUY Signal Analysis</h1>
             </div>
-            
+
             <!-- Global Company Search -->
             <div class="global-search-wrapper">
                 <div class="global-search-box">
-                    <input type="text" id="globalSearch" class="global-search-input" placeholder="🔍 Search any company..." autocomplete="off">
+                    <input type="text" id="globalSearch" class="global-search-input"
+                        placeholder="🔍 Search any company..." autocomplete="off">
                     <button id="clearGlobalSearch" class="clear-global-search-btn" style="display: none;">✕</button>
                 </div>
                 <div class="global-search-results hidden" id="globalSearchResults"></div>
             </div>
-            
+
             <div class="header-left">
                 <p class="header-subtitle" id="latestDate">Latest Date: -</p>
             </div>
             <div class="indicators-section">
-            <div class="indicators-toggle-wrapper">
-                <div class="indicators-toggle" id="indicatorsToggle">
-                    <span class="toggle-icon">▼</span>
-                    <span class="toggle-text">📊 Indicators</span>
-                    <span class="indicator-count" id="indicatorCount">Loading...</span>
+                <div class="indicators-toggle-wrapper">
+                    <div class="indicators-toggle" id="indicatorsToggle">
+                        <span class="toggle-icon">▼</span>
+                        <span class="toggle-text">📊 Indicators</span>
+                        <span class="indicator-count" id="indicatorCount">Loading...</span>
+                    </div>
+                    <div class="indicators-list hidden" id="indicatorsList">
+                    </div>
                 </div>
-                <div class="indicators-list hidden" id="indicatorsList">
-                </div>
+                <a href="/indicator-analytics" target="_blank" class="btn-indicator-analytics"
+                    title="View Indicator Analytics in new tab">
+                    📊 Indicator Analytics
+                </a>
             </div>
-        </div>
-             <div class="header-controls">
+            <div class="header-controls">
                 <div class="control-group">
                     <label for="dashboardTarget">Target Profit %</label>
-                    <input type="number" id="dashboardTarget" class="control-input" placeholder="e.g. 5" min="0.1" max="100" step="0.1">
+                    <input type="number" id="dashboardTarget" class="control-input" placeholder="e.g. 5" min="0.1"
+                        max="100" step="0.1" value="5">
                 </div>
-                
-                <div class="control-group">
-                    <label for="dashboardDays">Days to Target</label>
-                    <input type="number" id="dashboardDays" class="control-input" placeholder="e.g. 30" min="1" max="365">
-                </div>
-                
-                <button id="dashboardAnalyzeBtn" class="btn btn-primary">
-                    <span class="btn-icon">⚡</span>
-                    <span>Analyze</span>
-                </button>
-            </div>
-        </div>
 
-            <!-- <div class="header-left">
-                <p class="header-subtitle" id="latestDate">Latest Date: -</p>
-            </div> -->
-            <!-- <div class="indicators-section">
-            <div class="indicators-toggle-wrapper">
-                <div class="indicators-toggle" id="indicatorsToggle">
-                    <span class="toggle-icon">▼</span>
-                    <span class="toggle-text">📊 Indicators</span>
-                    <span class="indicator-count" id="indicatorCount">Loading...</span>
-                </div>
-                <div class="indicators-list hidden" id="indicatorsList">
-                </div>
-            </div>
-        </div> -->
-            <!-- <div class="header-controls">
-                <div class="control-group">
-                    <label for="dashboardTarget">Target Profit %</label>
-                    <input type="number" id="dashboardTarget" class="control-input" placeholder="e.g. 5" min="0.1" max="100" step="0.1">
-                </div>
-                
                 <div class="control-group">
                     <label for="dashboardDays">Days to Target</label>
-                    <input type="number" id="dashboardDays" class="control-input" placeholder="e.g. 30" min="1" max="365">
+                    <input type="number" id="dashboardDays" class="control-input" placeholder="e.g. 30" min="1"
+                        max="365" value="30">
                 </div>
-                
+
                 <button id="dashboardAnalyzeBtn" class="btn btn-primary">
                     <span class="btn-icon">⚡</span>
                     <span>Analyze</span>
                 </button>
-            </div> -->
-        
+            </div>
+        </div>
     </div>
 
     <!-- Results Section -->
@@ -91,10 +66,11 @@
             <div class="results-header-row">
                 <!-- Search Box for Results -->
                 <div class="results-search-box">
-                    <input type="text" id="resultsSearch" class="results-search-input" placeholder="🔍 Search companies or indicators..." autocomplete="off">
+                    <input type="text" id="resultsSearch" class="results-search-input"
+                        placeholder="🔍 Search companies or indicators..." autocomplete="off">
                     <button id="clearSearch" class="clear-search-btn">✕</button>
                 </div>
-                
+
                 <!-- Filter Dropdown -->
                 <div class="results-filter-group">
                     <label for="minSignals">Filter:</label>
@@ -106,7 +82,7 @@
                         <option value="5">5+ Signals</option>
                     </select>
                 </div>
-                
+
                 <!-- Group By Toggle -->
                 <div class="results-filter-group">
                     <label>
@@ -135,5 +111,5 @@
 </script>
 
 <!-- Load fast loading script for dashboard -->
-<script src="/static/progressive-fast.js?v=3.4"></script>
+<script src="/static/progressive-fast.js?v=3.7"></script>
 {% endblock %}

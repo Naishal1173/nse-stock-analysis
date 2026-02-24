@@ -1,0 +1,374 @@
+/* Indicator Analytics Page Styles */
+
+/* Utility Classes */
+.hidden {
+    display: none !important;
+}
+
+/* Override for specific elements that might have !important display rules */
+.ia-summary-cards.hidden,
+.ia-filter-bar.hidden,
+.ia-results.hidden {
+    display: none !important;
+}
+
+.ia-page {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: calc(100vh - 60px);
+    background: #f8fafc;
+    padding: 0;
+}
+
+/* Header */
+.ia-header {
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 1.2rem 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.ia-header-top {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.ia-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #111827;
+    letter-spacing: -0.5px;
+}
+
+.ia-subtitle {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.ia-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+    flex-wrap: nowrap;
+}
+
+/* Summary Cards */
+.ia-summary-cards {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+    gap: 1rem !important;
+    padding: 1.2rem 1.5rem !important;
+    background: #ffffff !important;
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+.ia-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    padding: 1rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.ia-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.ia-card-icon {
+    font-size: 1.5rem;
+}
+
+.ia-card-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #111827;
+    letter-spacing: -0.5px;
+    text-align: center;
+}
+
+.ia-card-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.ia-card-total {
+    border-left: 3px solid #3b82f6;
+}
+
+.ia-card-signals {
+    border-left: 3px solid #8b5cf6;
+}
+
+.ia-card-success {
+    border-left: 3px solid #10b981;
+}
+
+.ia-card-best {
+    border-left: 3px solid #f59e0b;
+}
+
+.ia-card-companies {
+    border-left: 3px solid #ec4899;
+}
+
+/* Filter Bar */
+.ia-filter-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1.5rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    gap: 1rem;
+}
+
+.ia-search-input {
+    flex: 1;
+    max-width: 400px;
+    padding: 0.6rem 1rem;
+    border: 2px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+    background: #ffffff;
+    color: #1f2937;
+    transition: all 0.2s ease;
+}
+
+.ia-search-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    background: #f0f9ff;
+}
+
+.ia-sort-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.ia-sort-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6b7280;
+    white-space: nowrap;
+}
+
+.ia-sort-group select {
+    width: 170px;
+    padding: 0.4rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.4rem;
+}
+
+/* Results */
+.ia-results {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    overflow-y: auto;
+}
+
+/* Indicator Table */
+.ia-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.ia-table thead {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    border-bottom: 2px solid #0f172a;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.ia-table th {
+    padding: 0.75rem 0.7rem;
+    text-align: left;
+    font-weight: 700;
+    color: #ffffff;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ia-table td {
+    padding: 0.7rem 0.7rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #1f2937;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+
+.ia-col-no {
+    width: 5%;
+    text-align: center;
+}
+
+.ia-col-expand {
+    width: 4%;
+    text-align: center;
+}
+
+.ia-col-indicator {
+    width: 18%;
+}
+
+.ia-col-num {
+    width: 11%;
+    text-align: center;
+}
+
+/* Indicator Row */
+.ia-indicator-row {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: white;
+}
+
+.ia-indicator-row:hover {
+    background: #f0f9ff !important;
+    box-shadow: inset 0 0 0 1px #bfdbfe;
+}
+
+.ia-indicator-row:nth-child(even) {
+    background: #f9fafb;
+}
+
+.ia-indicator-row.ia-expanded {
+    background: #eff6ff !important;
+    box-shadow: inset 3px 0 0 #3b82f6;
+}
+
+.ia-rank {
+    font-weight: 700;
+    color: #3b82f6;
+    text-align: center;
+    font-size: 0.85rem;
+}
+
+.ia-expand-icon {
+    text-align: center;
+    font-size: 0.7rem;
+    color: #6b7280;
+}
+
+.ia-company-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e0e7ff;
+    color: #3730a3;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+/* Expanded Company Section */
+.ia-company-header-row td {
+    padding: 0 !important;
+    background: #f1f5f9 !important;
+}
+
+.ia-company-section {
+    padding: 0.8rem 1.2rem 1rem;
+    background: #f1f5f9;
+    border-left: 3px solid #3b82f6;
+}
+
+.ia-company-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 0.4rem;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.ia-company-table thead {
+    background: #64748b;
+}
+
+.ia-company-table th {
+    padding: 0.5rem 0.6rem;
+    color: white;
+    font-size: 0.68rem;
+}
+
+.ia-company-table td {
+    padding: 0.5rem 0.6rem;
+    font-size: 0.78rem;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+/* Badge styles */
+.badge {
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.35rem;
+    font-weight: 700;
+    font-size: 0.7rem;
+}
+
+.badge-success {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge-failure {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.badge-open {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-rate {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .ia-summary-cards {
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .ia-summary-cards {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    .ia-header {
+        flex-direction: column;
+    }
+}
