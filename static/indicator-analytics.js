@@ -3,6 +3,12 @@ let iaData = null;
 let iaFilteredData = null;
 let expandedRows = new Set();
 
+// Simple notification function
+function showNotification(message, type = 'info') {
+    console.log(`[${type.toUpperCase()}] ${message}`);
+    // You can add a toast notification here if needed
+}
+
 async function analyzeIndicators() {
     const target = document.getElementById('iaTarget').value;
     const days = document.getElementById('iaDays').value;
@@ -16,7 +22,6 @@ async function analyzeIndicators() {
         // Show loading, hide others
         document.getElementById('iaLoadingState').classList.remove('hidden');
         document.getElementById('iaEmptyState').classList.add('hidden');
-        document.getElementById('iaFilterBar').classList.add('hidden');
         document.getElementById('iaResults').classList.add('hidden');
 
         const url = `/api/indicator-analytics?target=${target}&days=${days}`;
@@ -42,13 +47,21 @@ async function analyzeIndicators() {
         // Show results
         renderTable(iaFilteredData);
 
-        document.getElementById('iaFilterBar').classList.remove('hidden');
         document.getElementById('iaResults').classList.remove('hidden');
 
-        showNotification(
-            `✅ Analyzed ${data.total_signals} signals across ${data.indicators.length} indicators in ${data.processing_time_seconds}s`,
-            'success'
-        );
+        // Show notification with cache status
+        let message = `✅ Analyzed ${data.total_signals} signals across ${data.indicators.length} indicators`;
+        if (data.cached) {
+            if (data.reused_from === 'dashboard') {
+                message += ` (⚡ reused from dashboard cache, age: ${data.cache_age_seconds}s)`;
+            } else {
+                message += ` (⚡ cached, age: ${data.cache_age_seconds}s)`;
+            }
+        } else {
+            message += ` in ${data.processing_time_seconds}s`;
+        }
+        
+        showNotification(message, 'success');
 
     } catch (error) {
         console.error('[IA] Error:', error);
@@ -113,14 +126,28 @@ function renderTable(indicators) {
         // Expanded company details
         if (isExpanded && ind.companies && ind.companies.length > 0) {
             html += `
-                <tr class="ia-company-header-row">
+                <tr class="ia-company-header-row" onclick="event.stopPropagation()">
                     <td colspan="9">
                         <div class="ia-company-section">
-                            <div class="ia-company-title">
-                                Companies with <strong>${ind.displayName}</strong> buy signals
-                                <span class="ia-company-total">${ind.uniqueCompanies} companies</span>
+                            <div class="ia-company-header-wrapper">
+                                <div class="ia-company-title">
+                                    Companies with <strong>${ind.displayName}</strong> buy signals
+                                    <span class="ia-company-total">${ind.uniqueCompanies} companies</span>
+                                </div>
+                                <div class="ia-company-search-box">
+                                    <input type="text" 
+                                           class="ia-company-search" 
+                                           id="companySearch_${ind.indicator}"
+                                           placeholder="🔍 Search companies..." 
+                                           autocomplete="off"
+                                           onkeyup="filterCompanies('${ind.indicator}')">
+                                    <button class="ia-clear-search" 
+                                            id="clearCompanySearch_${ind.indicator}"
+                                            onclick="clearCompanySearch('${ind.indicator}')"
+                                            style="display: none;">✕</button>
+                                </div>
                             </div>
-                            <table class="ia-company-table">
+                            <table class="ia-company-table" id="companyTable_${ind.indicator}">
                                 <thead>
                                     <tr>
                                         <th>NO.</th>
@@ -141,7 +168,7 @@ function renderTable(indicators) {
                 const viewUrl = `/symbol/${encodeURIComponent(comp.symbol)}?indicator=${encodeURIComponent(ind.indicator)}`;
 
                 html += `
-                    <tr class="ia-company-row">
+                    <tr class="ia-company-row" data-symbol="${comp.symbol.toLowerCase()}">
                         <td>${ci + 1}</td>
                         <td><strong>${comp.symbol}</strong></td>
                         <td class="center">${comp.totalSignals}</td>
@@ -181,29 +208,66 @@ function toggleExpand(indicator) {
     renderTable(iaFilteredData);
 }
 
-// Search functionality
-document.addEventListener('DOMContentLoaded', function () {
-    const searchInput = document.getElementById('iaSearch');
-    if (searchInput) {
-        searchInput.addEventListener('input', function () {
-            const term = this.value.toLowerCase().trim();
-            if (!iaData) return;
-
-            if (!term) {
-                iaFilteredData = [...iaData.indicators];
-            } else {
-                iaFilteredData = iaData.indicators.filter(ind => {
-                    // Search by indicator name
-                    if (ind.displayName.toLowerCase().includes(term)) return true;
-                    if (ind.indicator.toLowerCase().includes(term)) return true;
-                    // Also search by company name within this indicator
-                    if (ind.companies.some(c => c.symbol.toLowerCase().includes(term))) return true;
-                    return false;
-                });
-            }
-
-            renderTable(iaFilteredData);
-        });
+// Close expanded sections when clicking outside
+document.addEventListener('click', function(event) {
+    // Check if click is outside any expanded section
+    const clickedRow = event.target.closest('.ia-indicator-row');
+    const clickedExpandedSection = event.target.closest('.ia-company-header-row');
+    
+    // If clicked outside both indicator row and expanded section, close all
+    if (!clickedRow && !clickedExpandedSection && expandedRows.size > 0) {
+        expandedRows.clear();
+        renderTable(iaFilteredData);
     }
 });
+
+// Company search functionality
+function filterCompanies(indicator) {
+    const searchInput = document.getElementById(`companySearch_${indicator}`);
+    const clearBtn = document.getElementById(`clearCompanySearch_${indicator}`);
+    const table = document.getElementById(`companyTable_${indicator}`);
+    
+    if (!searchInput || !table) return;
+    
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    const rows = table.querySelectorAll('tbody tr.ia-company-row');
+    
+    // Show/hide clear button
+    if (clearBtn) {
+        clearBtn.style.display = searchTerm ? 'block' : 'none';
+    }
+    
+    let visibleCount = 0;
+    rows.forEach(row => {
+        const symbol = row.getAttribute('data-symbol');
+        if (!searchTerm || symbol.includes(searchTerm)) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Update row numbers for visible rows
+    let rowNum = 1;
+    rows.forEach(row => {
+        if (row.style.display !== 'none') {
+            row.querySelector('td:first-child').textContent = rowNum++;
+        }
+    });
+}
+
+function clearCompanySearch(indicator) {
+    const searchInput = document.getElementById(`companySearch_${indicator}`);
+    const clearBtn = document.getElementById(`clearCompanySearch_${indicator}`);
+    
+    if (searchInput) {
+        searchInput.value = '';
+        filterCompanies(indicator);
+    }
+    
+    if (clearBtn) {
+        clearBtn.style.display = 'none';
+    }
+}
 

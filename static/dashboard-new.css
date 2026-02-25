@@ -613,6 +613,7 @@ body {
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
+    margin-right: 150px;
 }
 
 .results-filter-group label {

@@ -587,19 +587,16 @@ function autoLoadChartForIndicator(indicator) {
             console.log(`✅ Set RSI dropdown to: ${indicator}`);
         }
     } else if (indicator.includes('BB')) {
-        // For BB indicators, extract the period and set the dropdown to the Middle band
-        // But store the actual indicator (Upper/Middle/Lower) for the API
+        // For BB indicators, set the dropdown to the exact indicator value
         const bbMatch = indicator.match(/BB(\d+)_(Upper|Middle|Lower)/);
         if (bbMatch) {
             const period = bbMatch[1];
             const type = bbMatch[2];
             const bbSelect = document.getElementById('bbSelect');
             if (bbSelect) {
-                // Set dropdown to the Middle band (that's what's in the dropdown)
-                bbSelect.value = `BB${period}_Middle`;
-                // Store the actual analyzed indicator as a data attribute
-                bbSelect.setAttribute('data-analyzed-indicator', indicator);
-                console.log(`✅ Set BB dropdown to: BB${period}_Middle (analyzed: ${indicator})`);
+                // The dropdown value is the full indicator name (e.g., BB50_Lower)
+                bbSelect.value = indicator;
+                console.log(`✅ Set BB dropdown to: ${indicator}`);
             }
         }
     } else if (indicator === 'Short' || indicator === 'Long' || indicator === 'Standard') {
@@ -870,15 +867,9 @@ async function updateChart() {
         
         const sma = smaSelect ? smaSelect.value : '';
         const rsi = rsiSelect ? rsiSelect.value : '';
-        let bb = bbSelect ? bbSelect.value : '';
+        const bb = bbSelect ? bbSelect.value : '';
         const macd = macdSelect ? macdSelect.value : '';
         const stoch = stochSelect ? stochSelect.value : '';
-        
-        // Check if BB has an analyzed indicator stored (from autoLoadChartForIndicator)
-        if (bbSelect && bbSelect.hasAttribute('data-analyzed-indicator')) {
-            bb = bbSelect.getAttribute('data-analyzed-indicator');
-            console.log(`📊 [CHART] Using analyzed BB indicator: ${bb}`);
-        }
         
         // Build URL with query parameters for selected indicators
         let url = API.symbolChart(SYMBOL);
@@ -1986,17 +1977,22 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
-        // Load summary info
-        loadSummaryInfo();
-        
-        // Load available indicators
-        loadAvailableIndicators();
-        
-        // Setup indicators toggle
-        setupIndicatorsToggle();
-        
-        // Load signals immediately on page load
-        loadDashboardSignals();
+        // ONLY load these if progressive-fast.js is NOT loaded (to prevent duplicate API calls)
+        if (typeof analyzeDashboardFast === 'undefined') {
+            // Load summary info
+            loadSummaryInfo();
+            
+            // Load available indicators
+            loadAvailableIndicators();
+            
+            // Setup indicators toggle
+            setupIndicatorsToggle();
+            
+            // Load signals immediately on page load
+            loadDashboardSignals();
+        } else {
+            console.log('📊 [DASHBOARD] Using progressive-fast.js - skipping duplicate initialization');
+        }
     } else if (document.getElementById('totalSymbols')) {
         loadDashboardData();
         
@@ -2044,15 +2040,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // After indicators are loaded and defaults set, update chart
-            console.log('📊 [INIT] Updating chart with default indicators...');
-            updateChart();
-            
-            // NOW check URL parameters and auto-run analysis (AFTER indicators are loaded)
+            // BUT: Skip if URL has indicator parameter (auto-analysis will load chart)
             const params = new URLSearchParams(window.location.search);
             const urlIndicator = params.get('indicator');
             const urlTarget = params.get('target');
             const urlDays = params.get('days');
             
+            if (!urlIndicator) {
+                console.log('📊 [INIT] Updating chart with default indicators...');
+                updateChart();
+            } else {
+                console.log('📊 [INIT] Skipping initial chart load (will load after auto-analysis)');
+            }
+            
+            // NOW check URL parameters and auto-run analysis (AFTER indicators are loaded)
             console.log(`📊 [AUTO] URL search params: ${window.location.search}`);
             console.log(`📊 [AUTO] URL indicator parameter: ${urlIndicator}`);
             console.log(`📊 [AUTO] URL target parameter: ${urlTarget}`);

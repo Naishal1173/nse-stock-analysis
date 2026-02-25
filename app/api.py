@@ -1337,21 +1337,162 @@ def indicator_analytics(
     days: int = Query(30, description="Days to hold position")
 ):
     """
-    OPTIMIZED: Aggregate analysis results BY INDICATOR.
-    Uses batch processing and request-scoped caching for speed.
+    ULTRA-OPTIMIZED: Aggregate analysis results BY INDICATOR using parallel processing.
+    WITH CACHING: Subsequent requests with same parameters return instantly from cache.
+    SMART REUSE: Can reuse dashboard analysis results if available.
     """
+    global _cached_indicator_analytics, _analytics_cache_time, _cached_progressive_analysis, _progressive_cache_time
+    
     start_time = time.time()
+    
+    # Check cache first
+    cache_key = f"{target}_{days}"
+    current_time = time.time()
+    
+    # Check indicator analytics cache first (NO TTL - cache forever until server restart)
+    if (_cached_indicator_analytics is not None and 
+        _analytics_cache_time is not None and
+        _cached_indicator_analytics.get('cache_key') == cache_key):
+        
+        cache_age = round(current_time - _analytics_cache_time, 2)
+        print(f"[INDICATOR-ANALYTICS] ⚡ CACHE HIT! Returning cached results (age: {cache_age}s)")
+        
+        cached_result = _cached_indicator_analytics['data'].copy()
+        cached_result['cached'] = True
+        cached_result['cache_age_seconds'] = cache_age
+        return cached_result
+    
+    # Check if we can reuse dashboard progressive analysis cache (NO TTL)
+    dashboard_cache_key = f"{target}_{days}_all"
+    if (_cached_progressive_analysis is not None and 
+        _progressive_cache_time is not None and
+        _cached_progressive_analysis.get('cache_key') == dashboard_cache_key):
+        
+        cache_age = round(current_time - _progressive_cache_time, 2)
+        print(f"[INDICATOR-ANALYTICS] ⚡ REUSING DASHBOARD CACHE! (age: {cache_age}s)")
+        
+        # Get dashboard results and aggregate by indicator
+        dashboard_data = _cached_progressive_analysis['data']
+        all_results = dashboard_data['all_results']
+        
+        # Aggregate by indicator
+        indicator_map = {}
+        
+        for result in all_results:
+            indicator = result.get('indicator')
+            symbol = result.get('symbol')
+            
+            # Normalize MACD display names
+            display_name = indicator
+            if indicator in ('Short', 'Long', 'Standard'):
+                display_name = f'MACD_{indicator}'
+            
+            if indicator not in indicator_map:
+                indicator_map[indicator] = {
+                    'indicator': indicator,
+                    'displayName': display_name,
+                    'totalSignals': 0,
+                    'successful': 0,
+                    'failed': 0,
+                    'open': 0,
+                    'companies': {}
+                }
+            
+            entry = indicator_map[indicator]
+            entry['totalSignals'] += result.get('totalSignals', 0)
+            entry['successful'] += result.get('successful', 0)
+            entry['failed'] += result.get('completedTrades', 0) - result.get('successful', 0)
+            entry['open'] += result.get('openTrades', 0)
+            
+            # Track per-company stats
+            if symbol not in entry['companies']:
+                entry['companies'][symbol] = {
+                    'symbol': symbol,
+                    'totalSignals': 0,
+                    'successful': 0,
+                    'failed': 0,
+                    'open': 0
+                }
+            c = entry['companies'][symbol]
+            c['totalSignals'] += result.get('totalSignals', 0)
+            c['successful'] += result.get('successful', 0)
+            c['failed'] += result.get('completedTrades', 0) - result.get('successful', 0)
+            c['open'] += result.get('openTrades', 0)
+        
+        # Build final response
+        indicator_list = []
+        for ind, data in indicator_map.items():
+            completed = data['successful'] + data['failed']
+            success_rate = round((data['successful'] / completed * 100), 2) if completed > 0 else 0
+
+            companies = []
+            for sym, cd in data['companies'].items():
+                comp_completed = cd['successful'] + cd['failed']
+                comp_rate = round((cd['successful'] / comp_completed * 100), 2) if comp_completed > 0 else 0
+                companies.append({
+                    'symbol': cd['symbol'],
+                    'totalSignals': cd['totalSignals'],
+                    'successful': cd['successful'],
+                    'failed': cd['failed'],
+                    'open': cd['open'],
+                    'successRate': comp_rate
+                })
+
+            # Sort companies by success rate desc
+            companies.sort(key=lambda x: (-x['successRate'], x['symbol']))
+
+            indicator_list.append({
+                'indicator': data['indicator'],
+                'displayName': data['displayName'],
+                'totalSignals': data['totalSignals'],
+                'successful': data['successful'],
+                'failed': data['failed'],
+                'open': data['open'],
+                'successRate': success_rate,
+                'uniqueCompanies': len(companies),
+                'companies': companies
+            })
+
+        # Sort indicators by success rate desc
+        indicator_list.sort(key=lambda x: (-x['successRate'], x['displayName']))
+
+        elapsed = time.time() - start_time
+        print(f"[INDICATOR-ANALYTICS] ⚡ Aggregated from dashboard cache in {elapsed:.2f}s")
+
+        result = {
+            'indicators': indicator_list,
+            'target_profit': target,
+            'days_to_hold': days,
+            'total_signals': len(all_results),
+            'processing_time_seconds': round(elapsed, 2),
+            'cached': True,
+            'cache_age_seconds': cache_age,
+            'reused_from': 'dashboard'
+        }
+        
+        # Store in indicator analytics cache too
+        _cached_indicator_analytics = {
+            'cache_key': cache_key,
+            'data': result
+        }
+        _analytics_cache_time = current_time
+        print(f"[INDICATOR-ANALYTICS] ✅ Results cached for future requests")
+        
+        return result
+    
+    print(f"[INDICATOR-ANALYTICS] Cache miss or expired, performing fresh analysis...")
+    
     conn = get_db()
     request_cache = {}
 
     try:
         cur = conn.cursor()
         
-        print(f"[INDICATOR-ANALYTICS] Starting optimized analysis for target={target}%, days={days}")
+        print(f"[INDICATOR-ANALYTICS] Starting parallel analysis for target={target}%, days={days}")
 
-        # Get all latest BUY signals grouped by indicator first
+        # Get all latest BUY signals
         cur.execute("""
-            SELECT indicator, symbol
+            SELECT symbol, indicator
             FROM latest_buy_signals
             ORDER BY indicator, symbol
         """)
@@ -1362,8 +1503,8 @@ def indicator_analytics(
 
         print(f"[INDICATOR-ANALYTICS] Found {len(signals)} signals to analyze")
 
-        # Batch load ALL prices at once (this is the key optimization)
-        unique_symbols = list(set(s[1] for s in signals))
+        # Batch load ALL prices at once
+        unique_symbols = list(set(s[0] for s in signals))
         print(f"[INDICATOR-ANALYTICS] Batch loading prices for {len(unique_symbols)} symbols...")
         
         prices_start = time.time()
@@ -1372,19 +1513,31 @@ def indicator_analytics(
         prices_elapsed = time.time() - prices_start
         print(f"[INDICATOR-ANALYTICS] Prices loaded in {prices_elapsed:.2f}s")
         
-        # Now analyze all signals with cached prices (much faster)
-        print(f"[INDICATOR-ANALYTICS] Analyzing signals with cached prices...")
+        # Close cursor and return connection before parallel processing
+        cur.close()
+        return_db(conn)
+        
+        # Analyze all signals in PARALLEL using executor
+        print(f"[INDICATOR-ANALYTICS] Analyzing {len(signals)} signals in parallel...")
         analysis_start = time.time()
         
-        # Group by indicator for aggregation
+        work_items = [
+            (symbol, indicator, target, days, None, request_cache)
+            for symbol, indicator in signals
+        ]
+        
+        # Use parallel processing (same as dashboard)
+        chunksize = max(1, len(work_items) // 30)
+        results = list(executor.map(_analyze_worker, work_items, chunksize=chunksize))
+        
+        analysis_elapsed = time.time() - analysis_start
+        print(f"[INDICATOR-ANALYTICS] Parallel analysis completed in {analysis_elapsed:.2f}s")
+        
+        # Group results by indicator
         indicator_map = {}
         
-        for indicator, symbol in signals:
-            # Analyze this signal using cached prices
-            result = _analyze_single_indicator_optimized(
-                cur, symbol, indicator, target, days,
-                request_cache, include_details=False
-            )
+        for i, (symbol, indicator) in enumerate(signals):
+            result = results[i]
             
             # Normalize MACD display names
             display_name = indicator
@@ -1422,9 +1575,6 @@ def indicator_analytics(
             c['successful'] += result.get('successful', 0)
             c['failed'] += result.get('failed', 0)
             c['open'] += result.get('openTrades', 0)
-        
-        analysis_elapsed = time.time() - analysis_start
-        print(f"[INDICATOR-ANALYTICS] Analysis completed in {analysis_elapsed:.2f}s")
         
         # Build final response
         indicator_list = []
@@ -1466,13 +1616,24 @@ def indicator_analytics(
         elapsed = time.time() - start_time
         print(f"[INDICATOR-ANALYTICS] COMPLETE: Analyzed {len(signals)} signals across {len(indicator_list)} indicators in {elapsed:.2f}s")
 
-        return {
+        result = {
             'indicators': indicator_list,
             'target_profit': target,
             'days_to_hold': days,
             'total_signals': len(signals),
-            'processing_time_seconds': round(elapsed, 2)
+            'processing_time_seconds': round(elapsed, 2),
+            'cached': False
         }
+        
+        # Store in cache
+        _cached_indicator_analytics = {
+            'cache_key': cache_key,
+            'data': result
+        }
+        _analytics_cache_time = current_time
+        print(f"[INDICATOR-ANALYTICS] ✅ Results cached for future requests")
+        
+        return result
 
     except Exception as e:
         import traceback
@@ -1480,11 +1641,6 @@ def indicator_analytics(
         return {'error': str(e), 'indicators': []}
     finally:
         request_cache.clear()
-        try:
-            cur.close()
-            return_db(conn)
-        except:
-            pass
 
 
 if __name__ == "__main__":
@@ -1510,10 +1666,46 @@ def analyze_progressive(
     - Frontend can show results immediately and load more in background
     
     IMPORTANT: First batch analyzes everything and caches sorted results
+    WITH CACHING: Subsequent page loads return instantly from cache
     """
-    global _cached_analysis_results  # Declare at the top of function
+    global _cached_analysis_results, _cached_progressive_analysis, _progressive_cache_time
     
     start_time = time.time()
+    
+    # Create cache key
+    cache_key = f"{target}_{days}_{indicators or 'all'}"
+    current_time = time.time()
+    
+    # Check if we have cached progressive analysis (NO TTL - cache forever until server restart)
+    if (offset == 0 and 
+        _cached_progressive_analysis is not None and 
+        _progressive_cache_time is not None and
+        _cached_progressive_analysis.get('cache_key') == cache_key):
+        
+        cache_age = round(current_time - _progressive_cache_time, 2)
+        print(f"[PROGRESSIVE] ⚡ CACHE HIT! Returning cached first batch (age: {cache_age}s)")
+        
+        cached_data = _cached_progressive_analysis['data']
+        all_results = cached_data['all_results']
+        
+        # Return first batch from cache
+        first_batch = all_results[0:batch_size]
+        
+        return {
+            "message": "First batch from cache",
+            "total_signals": len(all_results),
+            "batch_size": len(first_batch),
+            "offset": 0,
+            "has_more": batch_size < len(all_results),
+            "next_offset": batch_size,
+            "target_profit": target,
+            "days_to_hold": days,
+            "processing_time_seconds": round(time.time() - start_time, 2),
+            "cached": True,
+            "cache_age_seconds": cache_age,
+            "results": first_batch
+        }
+    
     conn = get_db()
     
     # Create request-scoped cache
@@ -1524,16 +1716,18 @@ def analyze_progressive(
         
         # Build WHERE clause for indicator filtering
         indicator_filter = ""
+        indicator_params = []
         if indicators:
             indicator_list = [ind.strip() for ind in indicators.split(',')]
-            placeholders = ','.join(['?' for _ in indicator_list])
+            placeholders = ','.join(['%s' for _ in indicator_list])
             indicator_filter = f" WHERE indicator IN ({placeholders})"
+            indicator_params = indicator_list
             print(f"[PROGRESSIVE] Filtering by indicators: {indicator_list}")
         
         # Get total count first
         count_query = f"SELECT COUNT(*) FROM latest_buy_signals{indicator_filter}"
         if indicators:
-            cur.execute(count_query, indicator_list)
+            cur.execute(count_query, indicator_params)
         else:
             cur.execute(count_query)
         total_signals = cur.fetchone()[0]
@@ -1549,7 +1743,7 @@ def analyze_progressive(
                 ORDER BY symbol, indicator
             """
             if indicators:
-                cur.execute(signals_query, indicator_list)
+                cur.execute(signals_query, indicator_params)
             else:
                 cur.execute(signals_query)
             
@@ -1580,8 +1774,7 @@ def analyze_progressive(
             all_results.sort(key=lambda x: (-x.get('successRate', 0), x.get('symbol', '')))
             print(f"[PROGRESSIVE] Sorted {len(all_results)} results by success rate")
             
-            # Cache sorted results in memory (using a simple in-memory cache)
-            # In production, you'd use Redis or similar
+            # Cache sorted results for pagination within same session
             _cached_analysis_results = {
                 'results': all_results,
                 'target': target,
@@ -1589,6 +1782,19 @@ def analyze_progressive(
                 'indicators': indicators,
                 'timestamp': time.time()
             }
+            
+            # Cache for subsequent page loads
+            _cached_progressive_analysis = {
+                'cache_key': cache_key,
+                'data': {
+                    'all_results': all_results,
+                    'target': target,
+                    'days': days,
+                    'indicators': indicators
+                }
+            }
+            _progressive_cache_time = current_time
+            print(f"[PROGRESSIVE] ✅ Results cached for future page loads")
             
             # Return first batch
             first_batch = all_results[0:batch_size]
@@ -1606,6 +1812,7 @@ def analyze_progressive(
                 "target_profit": target,
                 "days_to_hold": days,
                 "processing_time_seconds": round(total_time, 2),
+                "cached": False,
                 "results": first_batch
             }
         
@@ -1656,6 +1863,16 @@ def analyze_progressive(
 
 # Global cache for progressive loading (simple in-memory cache)
 _cached_analysis_results = None
+
+# Global cache for indicator analytics (simple in-memory cache)
+_cached_indicator_analytics = None
+_analytics_cache_time = None
+ANALYTICS_CACHE_TTL = 300  # Not used - cache is infinite (until server restart)
+
+# Global cache for dashboard progressive analysis
+_cached_progressive_analysis = None
+_progressive_cache_time = None
+PROGRESSIVE_CACHE_TTL = 300  # Not used - cache is infinite (until server restart)
 
 
 # =========================================================

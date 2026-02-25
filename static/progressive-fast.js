@@ -61,7 +61,12 @@ async function analyzeDashboardFast() {
         allResults = firstData.results || [];
         const totalSignals = firstData.total_signals;
 
-        console.log(`✅ [DASHBOARD] First ${allResults.length} results loaded in ${firstData.processing_time_seconds}s`);
+        // Show cache status
+        if (firstData.cached) {
+            console.log(`✅ [DASHBOARD] First ${allResults.length} results loaded from cache in ${firstData.processing_time_seconds}s (⚡ cache age: ${firstData.cache_age_seconds}s)`);
+        } else {
+            console.log(`✅ [DASHBOARD] First ${allResults.length} results loaded in ${firstData.processing_time_seconds}s`);
+        }
         
         // Show first 50 immediately
         document.getElementById('loadingState').classList.add('hidden');
@@ -989,6 +994,12 @@ if (document.readyState === 'loading') {
         if (minSignalsDropdown) {
             minSignalsDropdown.addEventListener('change', applyMinSignalsFilterToResults);
         }
+        
+        // Load dashboard data (from script.js functions)
+        if (typeof loadSummaryInfo !== 'undefined') loadSummaryInfo();
+        if (typeof loadAvailableIndicators !== 'undefined') loadAvailableIndicators();
+        if (typeof setupIndicatorsToggle !== 'undefined') setupIndicatorsToggle();
+        if (typeof loadDashboardSignals !== 'undefined') loadDashboardSignals();
     });
 } else {
     setupIndicatorFiltering();
@@ -1000,6 +1011,12 @@ if (document.readyState === 'loading') {
     if (minSignalsDropdown) {
         minSignalsDropdown.addEventListener('change', applyMinSignalsFilterToResults);
     }
+    
+    // Load dashboard data (from script.js functions)
+    if (typeof loadSummaryInfo !== 'undefined') loadSummaryInfo();
+    if (typeof loadAvailableIndicators !== 'undefined') loadAvailableIndicators();
+    if (typeof setupIndicatorsToggle !== 'undefined') setupIndicatorsToggle();
+    if (typeof loadDashboardSignals !== 'undefined') loadDashboardSignals();
 }
 
 // =========================================================

@@ -281,11 +281,17 @@ def export_all_buy_signals(log_file=None, latest_date=None):
                     # Combine existing and new data
                     combined_df = pd.concat([existing_df, new_df], ignore_index=True)
                     
+                    # Convert trade_date to datetime for proper sorting
+                    combined_df['trade_date'] = pd.to_datetime(combined_df['trade_date'])
+                    
                     # Sort by symbol (company) first, then by date descending
                     combined_df = combined_df.sort_values(
                         by=['symbol', 'trade_date'], 
                         ascending=[True, False]  # Symbol A-Z, Date newest first
                     )
+                    
+                    # Convert trade_date back to string format for CSV
+                    combined_df['trade_date'] = combined_df['trade_date'].dt.strftime('%Y-%m-%d')
                     
                     # Write sorted data back to CSV
                     combined_df.to_csv(csv_file, index=False)
@@ -336,6 +342,18 @@ def export_all_buy_signals(log_file=None, latest_date=None):
             log_message("📊 Fetching all data from database...", log_file)
             df = pd.read_sql_query(query, conn)
             log_message(f"✓ Retrieved {len(df):,} BUY signals", log_file)
+            
+            # Convert trade_date to datetime for proper sorting
+            df['trade_date'] = pd.to_datetime(df['trade_date'])
+            
+            # Sort by symbol first, then by date descending
+            df = df.sort_values(
+                by=['symbol', 'trade_date'], 
+                ascending=[True, False]
+            )
+            
+            # Convert trade_date back to string format for CSV
+            df['trade_date'] = df['trade_date'].dt.strftime('%Y-%m-%d')
             
             log_message(f"💾 Writing to CSV file...", log_file)
             df.to_csv(csv_file, index=False)
