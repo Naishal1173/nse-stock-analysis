@@ -1978,23 +1978,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Re-analyze when toggle changes (if results already loaded)
                 if (allResults && allResults.length > 0) {
-                    // If indicators are selected, use the filter function which handles both views
-                    if (typeof filterBySelectedIndicators !== 'undefined' && selectedIndicators && selectedIndicators.length > 0) {
+                    // If progressive-fast.js is loaded, it handles the checkbox change via applyAllFilters()
+                    // So we don't need to do anything here - the event listener in progressive-fast.js will handle it
+                    if (typeof applyAllFilters !== 'undefined') {
+                        // applyAllFilters() is already called by progressive-fast.js checkbox handler
+                        console.log('📊 [DASHBOARD] Checkbox handled by progressive-fast.js');
+                    } else if (typeof filterBySelectedIndicators !== 'undefined' && selectedIndicators && selectedIndicators.length > 0) {
+                        // Fallback for old code path
                         console.log('📊 [DASHBOARD] Toggling view with indicator filter active...');
                         filterBySelectedIndicators();
                     } else if (this.checked && typeof analyzeDashboardGrouped !== 'undefined') {
                         analyzeDashboardGrouped();
                     } else if (typeof analyzeDashboardFast !== 'undefined') {
-                        // Restore ungrouped results instantly
-                        if (ungroupedResults && ungroupedResults.length > 0) {
-                            console.log('📊 [DASHBOARD] Restoring ungrouped results...');
-                            allResults = [...ungroupedResults];
-                            const target = document.getElementById('dashboardTarget').value;
-                            const days = document.getElementById('dashboardDays').value;
-                            displayResults(allResults, target, days);
-                        } else {
-                            analyzeDashboardFast();
-                        }
+                        analyzeDashboardFast();
                     }
                 }
             });

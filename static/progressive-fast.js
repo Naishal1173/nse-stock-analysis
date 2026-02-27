@@ -112,14 +112,16 @@ async function analyzeDashboardFast() {
                 // Store ungrouped results for fast toggling
                 ungroupedResults = [...allResults];
                 
-                // Final display
-                displayResults(allResults, target, days);
-                
-                // Load prices AFTER data is loaded (only for companies with signals)
-                loadLatestPrices();
+                // Load prices FIRST, then apply filters
+                await loadLatestPrices();
                 
                 // Enable price filter after first successful analysis
                 enablePriceFilter();
+                
+                // ALWAYS apply all filters (including price filter if selected)
+                // This ensures allResults is properly filtered
+                console.log(`📊 [DASHBOARD] Applying all filters...`);
+                applyAllFilters();
             }
         }
 
@@ -1205,6 +1207,7 @@ function applyPriceFilter(results, priceRange) {
         const priceData = latestPrices[result.symbol];
         if (!priceData) {
             // If price not available for this symbol, exclude it from filtered results
+            console.log(`⚠️ [PRICE FILTER] No price for ${result.symbol} - EXCLUDED`);
             return false;
         }
         
@@ -1213,7 +1216,11 @@ function applyPriceFilter(results, priceRange) {
         if (maxPrice === Infinity) {
             return price >= minPrice;
         } else {
-            return price >= minPrice && price <= maxPrice;
+            const passes = price >= minPrice && price <= maxPrice;
+            if (!passes) {
+                console.log(`🚫 [PRICE FILTER] ${result.symbol} (₹${price}) outside range ₹${minPrice}-₹${maxPrice}`);
+            }
+            return passes;
         }
     });
     
@@ -1257,8 +1264,26 @@ function setupPriceFilter() {
         // If data is loaded, apply filter immediately
         if (ungroupedResults && ungroupedResults.length > 0) {
             applyAllFilters();
+            const label = priceRange === 'all' ? 'All Prices' : `₹${priceRange.replace('-', ' - ₹').replace('+', '+')}`;
+            showNotification(`Price filter applied: ${label}`, 'success');
+        } else {
+            // No data loaded yet - remind user to analyze first
+            showNotification('Price filter selected. Click ANALYZE to apply.', 'info');
         }
     });
+    
+    // Setup Group by Company checkbox
+    const groupCheckbox = document.getElementById('groupByCompany');
+    if (groupCheckbox) {
+        groupCheckbox.addEventListener('change', function() {
+            console.log(`📊 [GROUP] Group by Company: ${this.checked}`);
+            
+            // If data is loaded, re-apply all filters with new grouping mode
+            if (ungroupedResults && ungroupedResults.length > 0) {
+                applyAllFilters();
+            }
+        });
+    }
 }
 
 // Apply all filters (indicators + price + min signals)
@@ -1507,19 +1532,9 @@ async function analyzeDashboardGrouped() {
     try {
         // Check if we already have ungrouped results loaded
         if (ungroupedResults && ungroupedResults.length > 0) {
-            // We have ungrouped data - group it instantly (no API call needed)
-            console.log('📊 [DASHBOARD] Grouping existing results...');
-            const startTime = performance.now();
-            
-            const groupedResults = groupResultsByCompany(ungroupedResults);
-            allResults = groupedResults; // Update allResults with grouped data
-            
-            const endTime = performance.now();
-            const totalTime = ((endTime - startTime) / 1000).toFixed(2);
-            console.log(`✅ [DASHBOARD] Grouped ${groupedResults.length} companies in ${totalTime}s`);
-            
-            // Pass the original ungrouped count
-            displayGroupedResults(groupedResults, target, days, ungroupedResults.length);
+            // We have ungrouped data - apply all filters which will handle grouping
+            console.log('📊 [DASHBOARD] Re-applying filters with grouping...');
+            applyAllFilters();
             return;
         }
 
