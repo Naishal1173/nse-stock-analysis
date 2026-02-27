@@ -11,16 +11,6 @@
                 <h1>Historical BUY Signal Analysis</h1>
             </div>
 
-            <!-- Global Company Search -->
-            <div class="global-search-wrapper">
-                <div class="global-search-box">
-                    <input type="text" id="globalSearch" class="global-search-input"
-                        placeholder="🔍 Search any company..." autocomplete="off">
-                    <button id="clearGlobalSearch" class="clear-global-search-btn" style="display: none;">✕</button>
-                </div>
-                <div class="global-search-results hidden" id="globalSearchResults"></div>
-            </div>
-
             <div class="header-left">
                 <p class="header-subtitle" id="latestDate">Latest Date: -</p>
             </div>
@@ -40,6 +30,18 @@
                 </a>
             </div>
             <div class="header-controls">
+                <div class="control-group">
+                    <label for="priceFilter">Share Price</label>
+                    <select id="priceFilter" class="control-input control-select">
+                        <option value="all">All Prices</option>
+                        <option value="0-50">< ₹50</option>
+                        <option value="50-100">₹50 - ₹100</option>
+                        <option value="100-500">₹100 - ₹500</option>
+                        <option value="500-1000">₹500 - ₹1000</option>
+                        <option value="1000+">> ₹1000</option>
+                    </select>
+                </div>
+                
                 <div class="control-group">
                     <label for="dashboardTarget">Target Profit %</label>
                     <input type="number" id="dashboardTarget" class="control-input" placeholder="e.g. 5" min="0.1"
@@ -71,8 +73,8 @@
                     <button id="clearSearch" class="clear-search-btn">✕</button>
                 </div>
 
-                <!-- Filter Dropdown -->
-                <div class="results-filter-group">
+                <!-- Filter Dropdown (for ungrouped view) -->
+                <div class="results-filter-group" id="ungroupedFilter">
                     <label for="minSignals">Filter:</label>
                     <select id="minSignals" class="control-input control-select filter-select">
                         <option value="1">All Companies</option>
@@ -80,6 +82,18 @@
                         <option value="3">3+ Signals</option>
                         <option value="4">4+ Signals</option>
                         <option value="5">5+ Signals</option>
+                    </select>
+                </div>
+
+                <!-- Filter Dropdown (for grouped view) -->
+                <div class="results-filter-group hidden" id="groupedFilter">
+                    <label for="minIndicators">Filter:</label>
+                    <select id="minIndicators" class="control-input control-select filter-select">
+                        <option value="1">All Companies</option>
+                        <option value="2">2+ Indicators</option>
+                        <option value="3">3+ Indicators</option>
+                        <option value="4">4+ Indicators</option>
+                        <option value="5">5+ Indicators</option>
                     </select>
                 </div>
 
@@ -111,5 +125,5 @@
 </script>
 
 <!-- Load fast loading script for dashboard -->
-<script src="/static/progressive-fast.js?v=3.9"></script>
+<script src="/static/progressive-fast.js?v=5.2"></script>
 {% endblock %}

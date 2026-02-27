@@ -1835,6 +1835,19 @@ async function loadAvailableIndicators() {
         
         let html = '';
         
+        // Add Select All / Clear All button at the top
+        html += `
+            <div class="indicator-controls">
+                <button class="btn-select-all" id="btnSelectAllIndicators" title="Select all indicators">
+                    ✓ Select All
+                </button>
+                <button class="btn-clear-all" id="btnClearAllIndicators" title="Clear all selections">
+                    ✕ Clear All
+                </button>
+            </div>
+            <div class="indicator-badges-container">
+        `;
+        
         // SMA badges
         if (smaIndicators.length > 0) {
             html += smaIndicators.map(ind => 
@@ -1874,6 +1887,8 @@ async function loadAvailableIndicators() {
                 `<span class="indicator-badge stoch" title="${indicators[ind]} BUY signals">${ind}</span>`
             ).join('');
         }
+        
+        html += '</div>'; // Close indicator-badges-container
         
         listElement.innerHTML = html || '<div class="empty-state">No indicators with BUY signals</div>';
         
@@ -1924,8 +1939,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Dashboard page
         const analyzeBtn = document.getElementById('dashboardAnalyzeBtn');
         const groupCheckbox = document.getElementById('groupByCompany');
-        const filterDropdown = document.getElementById('minSignals');
-        const filterGroup = filterDropdown ? filterDropdown.closest('.results-filter-group') : null;
+        const ungroupedFilter = document.getElementById('ungroupedFilter');
+        const groupedFilter = document.getElementById('groupedFilter');
+        const minSignalsDropdown = document.getElementById('minSignals');
+        const minIndicatorsDropdown = document.getElementById('minIndicators');
         
         // Use progressive loading if available, otherwise fall back to regular
         if (typeof analyzeDashboardProgressive !== 'undefined') {
@@ -1946,20 +1963,26 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add change event listener for group by company checkbox
         if (groupCheckbox) {
             groupCheckbox.addEventListener('change', function() {
-                // Hide/show filter dropdown based on checkbox state
-                if (filterGroup) {
+                // Toggle filter dropdowns based on checkbox state
+                if (ungroupedFilter && groupedFilter) {
                     if (this.checked) {
-                        // Hide filter when grouped
-                        filterGroup.style.display = 'none';
+                        // Show grouped filter, hide ungrouped filter
+                        ungroupedFilter.classList.add('hidden');
+                        groupedFilter.classList.remove('hidden');
                     } else {
-                        // Show filter when ungrouped
-                        filterGroup.style.display = 'flex';
+                        // Show ungrouped filter, hide grouped filter
+                        ungroupedFilter.classList.remove('hidden');
+                        groupedFilter.classList.add('hidden');
                     }
                 }
                 
                 // Re-analyze when toggle changes (if results already loaded)
                 if (allResults && allResults.length > 0) {
-                    if (this.checked && typeof analyzeDashboardGrouped !== 'undefined') {
+                    // If indicators are selected, use the filter function which handles both views
+                    if (typeof filterBySelectedIndicators !== 'undefined' && selectedIndicators && selectedIndicators.length > 0) {
+                        console.log('📊 [DASHBOARD] Toggling view with indicator filter active...');
+                        filterBySelectedIndicators();
+                    } else if (this.checked && typeof analyzeDashboardGrouped !== 'undefined') {
                         analyzeDashboardGrouped();
                     } else if (typeof analyzeDashboardFast !== 'undefined') {
                         // Restore ungrouped results instantly
@@ -1973,6 +1996,23 @@ document.addEventListener('DOMContentLoaded', function() {
                             analyzeDashboardFast();
                         }
                     }
+                }
+            });
+        }
+        
+        // Add filter event listener for grouped view
+        if (minIndicatorsDropdown) {
+            minIndicatorsDropdown.addEventListener('change', function() {
+                if (groupCheckbox && groupCheckbox.checked && allResults && allResults.length > 0) {
+                    const minIndicators = parseInt(this.value);
+                    const target = document.getElementById('dashboardTarget').value;
+                    const days = document.getElementById('dashboardDays').value;
+                    
+                    // Filter grouped results by indicator count
+                    const filtered = allResults.filter(r => r.indicator_count >= minIndicators);
+                    console.log(`📊 [FILTER] Showing ${filtered.length} companies with ${minIndicators}+ indicators`);
+                    // Pass original ungrouped count
+                    displayGroupedResults(filtered, target, days, ungroupedResults ? ungroupedResults.length : null);
                 }
             });
         }
@@ -2338,6 +2378,61 @@ document.addEventListener('DOMContentLoaded', function() {
                 loadSymbolIndicators();
             });
         }
+    }
+    
+    // PDF Report Generation Handler
+    const generateReportBtn = document.getElementById('generateReportBtn');
+    if (generateReportBtn) {
+        generateReportBtn.addEventListener('click', async function() {
+            try {
+                // Disable button during generation
+                generateReportBtn.disabled = true;
+                generateReportBtn.textContent = '⏳ Generating...';
+                
+                showNotification('Generating PDF report for last 30 days...', 'info');
+                
+                // Call API to generate report
+                const response = await fetch('/api/generate-report');
+                
+                if (!response.ok) {
+                    throw new Error('Failed to generate report');
+                }
+                
+                // Get the blob
+                const blob = await response.blob();
+                
+                // Create blob URL
+                const url = window.URL.createObjectURL(blob);
+                
+                // Trigger download
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `NSE_BUY_Signals_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                // Open in new tab after a short delay (to avoid popup blocker)
+                setTimeout(() => {
+                    window.open(url, '_blank');
+                }, 100);
+                
+                // Cleanup after longer delay (keep URL alive for new tab)
+                setTimeout(() => {
+                    window.URL.revokeObjectURL(url);
+                }, 10000);
+                
+                showNotification('✅ PDF report generated and downloaded! Opening in new tab...', 'success');
+                
+            } catch (error) {
+                console.error('Error generating report:', error);
+                showNotification('Failed to generate report: ' + error.message, 'error');
+            } finally {
+                // Re-enable button
+                generateReportBtn.disabled = false;
+                generateReportBtn.textContent = '📄 Export PDF';
+            }
+        });
     }
 });
 

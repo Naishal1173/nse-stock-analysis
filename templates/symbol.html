@@ -11,33 +11,44 @@
         </div>
     </div>
 
-    <div class="analysis-section">
-        <div class="analysis-header">
-            <h2>Historical BUY Signal Analysis</h2>
-            <p class="analysis-description">Analyze past BUY signals to predict future performance</p>
-        </div>
+   <div class="analysis-section">
+    <div class="analysis-header">
         
+        <div class="analysis-title">
+            <h2>Historical BUY Signal Analysis</h2>
+            <p class="analysis-description">
+                Analyze past BUY signals to predict future performance
+            </p>
+        </div>
+
         <div class="analysis-controls">
             <div class="control-group">
                 <label for="analysisIndicator">INDICATOR:</label>
                 <select id="analysisIndicator" class="filter-select">
                     <option value="">Select Indicator</option>
-                    <!-- Options dynamically loaded by loadAnalysisIndicators() in script.js -->
                 </select>
             </div>
-            
+
             <div class="control-group">
-                <label for="analysisTarget">TARGET PROFIT %:</label>
-                <input type="number" id="analysisTarget" class="analysis-input" placeholder="e.g. 5" min="0.1" max="100" step="0.1" value="5">
+                <label for="analysisTarget">TARGET %:</label>
+                <input type="number" id="analysisTarget"
+                       class="analysis-input" value="5">
             </div>
-            
+
             <div class="control-group">
-                <label for="analysisDays">DAYS TO TARGET:</label>
-                <input type="number" id="analysisDays" class="analysis-input" placeholder="e.g. 30" min="1" max="365" value="30">
+                <label for="analysisDays">DAYS:</label>
+                <input type="number" id="analysisDays"
+                       class="analysis-input" value="30">
             </div>
-            
-            <button id="analyzeBtn" class="btn btn-primary">ANALYZE</button>
+
+            <button id="analyzeBtn" class="btn btn-primary">
+                ANALYZE
+            </button>
         </div>
+
+    </div>
+</div>
+        
         
         <div id="analysisLoading" class="analysis-loading" style="display: none;">
             <div class="loading-spinner"></div>

@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}NSE Stock Analysis{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css?v=2.6">
-    <link rel="stylesheet" href="/static/dashboard-new.css?v=4.0">
+    <link rel="stylesheet" href="/static/style.css?v=3.7">
+    <link rel="stylesheet" href="/static/dashboard-new.css?v=4.5">
     <script src="/static/lightweight-charts.js"></script>
     {% block extra_head %}{% endblock %}
 </head>
@@ -14,7 +14,24 @@
 <body>
     <nav class="navbar">
         <div class="nav-container">
-            <a href="/" class="nav-brand">NSE Stock Analysis</a>
+            <a href="/" class="nav-brand">📊 NSE Stock Analysis</a>
+            
+            <!-- Global Company Search -->
+            <div class="nav-search-wrapper">
+                <div class="nav-search-box">
+                    <input type="text" id="globalSearch" class="nav-search-input"
+                        placeholder="🔍 Search any company..." autocomplete="off">
+                    <button id="clearGlobalSearch" class="nav-clear-btn" style="display: none;">✕</button>
+                </div>
+                <div class="nav-search-results hidden" id="globalSearchResults"></div>
+            </div>
+            
+            <!-- PDF Report Button -->
+            <div class="nav-report-wrapper">
+                <button id="generateReportBtn" class="nav-report-btn" title="Export last 30 days data as PDF">
+                    📄 Export PDF
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -24,7 +41,7 @@
         {% block content %}{% endblock %}
     </main>
 
-    <script src="/static/script.js?v=5.3"></script>
+    <script src="/static/script.js?v=5.11"></script>
 
 </body>
 

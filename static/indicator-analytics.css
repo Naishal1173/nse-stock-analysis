@@ -25,13 +25,13 @@
 .ia-header {
     background: #ffffff;
     border-bottom: 1px solid #e5e7eb;
-    padding: 1.2rem 1.5rem;
+    padding: 0.3rem 0.5rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: 0.4rem;
     position: sticky;
     top: 0;
     z-index: 100;
@@ -40,12 +40,12 @@
 .ia-header-top {
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 0;
 }
 
 .ia-title {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: 0.9rem;
     font-weight: 700;
     color: #111827;
     letter-spacing: -0.5px;
@@ -53,14 +53,14 @@
 
 .ia-subtitle {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: 0.6rem;
     color: #6b7280;
     font-weight: 500;
 }
 
 .ia-controls {
     display: flex;
-    gap: 1rem;
+    gap: 0.4rem;
     align-items: flex-end;
     flex-wrap: nowrap;
 }
@@ -68,11 +68,11 @@
 .control-group {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.1rem;
 }
 
 .control-group label {
-    font-size: 0.75rem;
+    font-size: 0.55rem;
     font-weight: 600;
     color: #6b7280;
     text-transform: uppercase;
@@ -80,35 +80,35 @@
 }
 
 .control-input {
-    padding: 0.5rem 0.75rem;
+    padding: 0.25rem 0.4rem;
     border: 1px solid #d1d5db;
-    border-radius: 0.4rem;
-    font-size: 0.85rem;
+    border-radius: 0.25rem;
+    font-size: 0.65rem;
     background: #ffffff;
     color: #1f2937;
     transition: all 0.2s ease;
-    width: 100px;
+    width: 70px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .control-input:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
     background: #f0f9ff;
 }
 
 .btn {
-    padding: 0.5rem 1.2rem;
+    padding: 0.35rem 0.8rem;
     border: none;
-    border-radius: 0.4rem;
-    font-size: 0.85rem;
+    border-radius: 0.3rem;
+    font-size: 0.7rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.3rem;
 }
 
 .btn-primary {
@@ -124,7 +124,7 @@
 }
 
 .btn-icon {
-    font-size: 1rem;
+    font-size: 0.85rem;
 }
 
 /* Loading State */
@@ -188,8 +188,8 @@
 .ia-summary-cards {
     display: grid !important;
     grid-template-columns: repeat(5, 1fr) !important;
-    gap: 1rem !important;
-    padding: 1.2rem 1.5rem !important;
+    gap: 0.4rem !important;
+    padding: 0.4rem 0.5rem !important;
     background: #ffffff !important;
     border-bottom: 1px solid #e5e7eb !important;
 }
@@ -197,12 +197,12 @@
 .ia-card {
     background: #ffffff;
     border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    padding: 1rem 1.2rem;
+    border-radius: 0.4rem;
+    padding: 0.4rem 0.6rem;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.15rem;
     transition: all 0.2s ease;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
@@ -213,11 +213,11 @@
 }
 
 .ia-card-icon {
-    font-size: 1.5rem;
+    font-size: 1.1rem;
 }
 
 .ia-card-value {
-    font-size: 1.4rem;
+    font-size: 1rem;
     font-weight: 800;
     color: #111827;
     letter-spacing: -0.5px;
@@ -225,7 +225,7 @@
 }
 
 .ia-card-label {
-    font-size: 0.72rem;
+    font-size: 0.6rem;
     font-weight: 600;
     color: #6b7280;
     text-transform: uppercase;
@@ -257,19 +257,19 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.8rem 1.5rem;
+    padding: 0.4rem 0.5rem;
     background: #ffffff;
     border-bottom: 1px solid #e5e7eb;
-    gap: 1rem;
+    gap: 0.4rem;
 }
 
 .ia-search-input {
     flex: 1;
-    max-width: 400px;
-    padding: 0.6rem 1rem;
+    max-width: 300px;
+    padding: 0.35rem 0.6rem;
     border: 2px solid #d1d5db;
-    border-radius: 0.5rem;
-    font-size: 0.85rem;
+    border-radius: 0.3rem;
+    font-size: 0.7rem;
     background: #ffffff;
     color: #1f2937;
     transition: all 0.2s ease;
@@ -278,34 +278,35 @@
 .ia-search-input:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
     background: #f0f9ff;
 }
 
 .ia-sort-group {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.3rem;
 }
 
 .ia-sort-group label {
-    font-size: 0.8rem;
+    font-size: 0.65rem;
     font-weight: 600;
     color: #6b7280;
     white-space: nowrap;
 }
 
 .ia-sort-group select {
-    width: 170px;
-    padding: 0.4rem;
+    width: 140px;
+    padding: 0.3rem;
     border: 1px solid #d1d5db;
-    border-radius: 0.4rem;
+    border-radius: 0.3rem;
+    font-size: 0.65rem;
 }
 
 /* Results */
 .ia-results {
     flex: 1;
-    padding: 1rem 1.5rem;
+    padding: 0.4rem 0.5rem;
     overflow-y: auto;
 }
 
@@ -315,7 +316,7 @@
     border-collapse: collapse;
     background: white;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border-radius: 0.5rem;
+    border-radius: 0.3rem;
     overflow: hidden;
 }
 
@@ -328,20 +329,20 @@
 }
 
 .ia-table th {
-    padding: 0.75rem 0.7rem;
+    padding: 0.4rem 0.4rem;
     text-align: left;
     font-weight: 700;
     color: #ffffff;
-    font-size: 0.72rem;
+    font-size: 0.6rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .ia-table td {
-    padding: 0.7rem 0.7rem;
+    padding: 0.4rem 0.4rem;
     border-bottom: 1px solid #e5e7eb;
     color: #1f2937;
-    font-size: 0.82rem;
+    font-size: 0.7rem;
     font-weight: 500;
 }
 
@@ -417,7 +418,7 @@
 }
 
 .ia-company-section {
-    padding: 0.8rem 1.2rem 1rem;
+    padding: 0.4rem 0.6rem 0.4rem;
     background: #f1f5f9;
     border-left: 3px solid #3b82f6;
 }
@@ -426,25 +427,25 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.8rem;
-    gap: 1rem;
+    margin-bottom: 0.4rem;
+    gap: 0.4rem;
 }
 
 .ia-company-title {
-    font-size: 0.9rem;
+    font-size: 0.75rem;
     font-weight: 600;
     color: #1e293b;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.3rem;
 }
 
 .ia-company-total {
     background: #3b82f6;
     color: white;
-    padding: 0.2rem 0.6rem;
-    border-radius: 0.3rem;
-    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.2rem;
+    font-size: 0.6rem;
     font-weight: 700;
 }
 
@@ -455,35 +456,35 @@
 }
 
 .ia-company-search {
-    padding: 0.4rem 2rem 0.4rem 0.8rem;
+    padding: 0.3rem 1.6rem 0.3rem 0.5rem;
     border: 2px solid #cbd5e1;
-    border-radius: 0.4rem;
-    font-size: 0.8rem;
+    border-radius: 0.3rem;
+    font-size: 0.65rem;
     background: white;
     color: #1f2937;
     transition: all 0.2s ease;
-    width: 250px;
+    width: 200px;
 }
 
 .ia-company-search:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .ia-clear-search {
     position: absolute;
-    right: 0.5rem;
+    right: 0.3rem;
     background: #e2e8f0;
     border: none;
     border-radius: 50%;
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    font-size: 0.7rem;
+    font-size: 0.6rem;
     color: #64748b;
     transition: all 0.2s ease;
 }
@@ -497,7 +498,7 @@
     width: 100%;
     border-collapse: collapse;
     background: white;
-    border-radius: 0.4rem;
+    border-radius: 0.3rem;
     overflow: hidden;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
@@ -507,23 +508,23 @@
 }
 
 .ia-company-table th {
-    padding: 0.5rem 0.6rem;
+    padding: 0.35rem 0.4rem;
     color: white;
-    font-size: 0.68rem;
+    font-size: 0.58rem;
 }
 
 .ia-company-table td {
-    padding: 0.5rem 0.6rem;
-    font-size: 0.78rem;
+    padding: 0.35rem 0.4rem;
+    font-size: 0.68rem;
     border-bottom: 1px solid #f3f4f6;
 }
 
 /* Badge styles */
 .badge {
-    padding: 0.3rem 0.6rem;
-    border-radius: 0.35rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
     font-weight: 700;
-    font-size: 0.7rem;
+    font-size: 0.6rem;
 }
 
 .badge-success {

@@ -5,6 +5,7 @@ let currentDisplayedResults = []; // Track what's currently being displayed
 let dashboardCurrentPage = 1;
 const ITEMS_PER_PAGE = 50;
 let selectedIndicators = [];
+let latestPrices = {}; // Store latest prices for all symbols
 
 async function analyzeDashboardFast() {
     const target = document.getElementById('dashboardTarget').value;
@@ -113,6 +114,12 @@ async function analyzeDashboardFast() {
                 
                 // Final display
                 displayResults(allResults, target, days);
+                
+                // Load prices AFTER data is loaded (only for companies with signals)
+                loadLatestPrices();
+                
+                // Enable price filter after first successful analysis
+                enablePriceFilter();
             }
         }
 
@@ -269,19 +276,26 @@ function displayResults(results, target, days) {
 
     let html = '';
 
+    // For ungrouped view: show count of signal rows, not sum of totalSignals
+    // Each row represents one indicator signal for one company
+    
+    // Add total signals header with pagination
     const filterInfo = selectedIndicators.length > 0 ? ` (${selectedIndicators.length} indicators)` : '';
-    // html += `<div class="results-progress-header"><span class="progress-count">✅ ${results.length} signals analyzed${filterInfo}</span><span class="page-info">Page ${dashboardCurrentPage} of ${totalPages}</span></div>`;
+    html += `<div class="results-summary-bar">
+        <span class="total-signals-count">📊 Total: <strong>${results.length}</strong> signals${filterInfo}</span>
+        <span class="page-info">Page <strong>${dashboardCurrentPage}</strong> of <strong>${totalPages}</strong></span>
+    </div>`;
 
     html += `<table class="results-table"><thead><tr>
-        <th class="col-no">No.</th>
-        <th class="col-symbol">Company Symbol</th>
-        <th class="col-indicator">Indicator</th>
-        <th class="col-total">Total Signals</th>
-        <th class="col-success">Success</th>
-        <th class="col-failure">Failure</th>
-        <th class="col-open">Open</th>
-        <th class="col-rate">Success %</th>
-        <th class="col-action">Action</th>
+        <th class="col-no">NO.</th>
+        <th class="col-symbol">COMPANY</th>
+        <th class="col-indicator">INDICATOR</th>
+        <th class="col-total center">TOTAL</th>
+        <th class="col-success center">SUCCESS</th>
+        <th class="col-failure center">FAILURE</th>
+        <th class="col-open center">OPEN</th>
+        <th class="col-rate center">SUCCESS %</th>
+        <th class="col-action center">ACTION</th>
     </tr></thead><tbody>`;
 
     if (paginatedResults.length === 0) {
@@ -335,18 +349,24 @@ function displayResults(results, target, days) {
 
             // Show total count badge if company has multiple signals
             const symbolDisplay = isFirstInGroup && totalIndicatorCount > 1
-                ? `${result.symbol}<span class="indicator-count-badge">${totalIndicatorCount} signals</span>`
+                ? `${result.symbol}<span class="indicator-count-badge">${totalIndicatorCount} indicators</span>`
                 : result.symbol;
+            
+            // Success rate badge class
+            let rateClass = "badge-rate";
+            if (successRate >= 60) rateClass = "success-rate-high";
+            else if (successRate >= 40) rateClass = "success-rate-medium";
+            else rateClass = "success-rate-low";
 
             html += `<tr class="${rowClass}">
-                <td class="rank">${globalIndex}</td>
+                <td class="rank center">${globalIndex}</td>
                 <td class="symbol">${symbolDisplay}</td>
-                <td class="col-indicator"><div class="indicator-single">${indicatorDisplay}</div></td>
+                <td class="indicator">${indicatorDisplay}</td>
                 <td class="center">${hasNoData ? '<span class="badge badge-warning">No Data</span>' : totalSignals}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-success">${successful}</span>`}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-failure">${failed}</span>`}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-open">${openTrades}</span>`}</td>
-                <td class="center">${hasNoData ? '<span class="badge badge-warning">N/A</span>' : `<span class="badge badge-rate success-rate-${successClass}">${successRate}%</span>`}</td>
+                <td class="center">${hasNoData ? '<span class="badge badge-warning">N/A</span>' : `<span class="badge badge-rate ${rateClass}">${successRate}%</span>`}</td>
                 <td class="center"><a href="${viewDetailsUrl}" class="btn-view" target="_blank" rel="noopener noreferrer">VIEW DETAILS</a></td>
             </tr>`;
         });
@@ -397,20 +417,24 @@ function displayResultsWithProgress(results, target, days, progressInfo) {
             </div>
         `;
     } else {
+        // Show summary bar when loading is complete
         const filterInfo = selectedIndicators.length > 0 ? ` (${selectedIndicators.length} indicators)` : '';
-        // html += `<div class="results-progress-header"><span class="progress-count">✅ ${results.length} signals analyzed${filterInfo}</span><span class="page-info">Page ${dashboardCurrentPage} of ${totalPages}</span></div>`;
+        html += `<div class="results-summary-bar">
+            <span class="total-signals-count">📊 Total: <strong>${results.length}</strong> signals${filterInfo}</span>
+            <span class="page-info">Page <strong>${dashboardCurrentPage}</strong> of <strong>${totalPages}</strong></span>
+        </div>`;
     }
 
     html += `<table class="results-table"><thead><tr>
-        <th class="col-no">No.</th>
-        <th class="col-symbol">Company Symbol</th>
-        <th class="col-indicator">Indicator</th>
-        <th class="col-total">Total Signals</th>
-        <th class="col-success">Success</th>
-        <th class="col-failure">Failure</th>
-        <th class="col-open">Open</th>
-        <th class="col-rate">Success %</th>
-        <th class="col-action">Action</th>
+        <th class="col-no">NO.</th>
+        <th class="col-symbol">COMPANY</th>
+        <th class="col-indicator">INDICATOR</th>
+        <th class="col-total center">TOTAL</th>
+        <th class="col-success center">SUCCESS</th>
+        <th class="col-failure center">FAILURE</th>
+        <th class="col-open center">OPEN</th>
+        <th class="col-rate center">SUCCESS %</th>
+        <th class="col-action center">ACTION</th>
     </tr></thead><tbody>`;
 
     if (paginatedResults.length === 0) {
@@ -464,18 +488,24 @@ function displayResultsWithProgress(results, target, days, progressInfo) {
 
             // Show total count badge if company has multiple signals
             const symbolDisplay = isFirstInGroup && totalIndicatorCount > 1
-                ? `${result.symbol}<span class="indicator-count-badge">${totalIndicatorCount} signals</span>`
+                ? `${result.symbol}<span class="indicator-count-badge">${totalIndicatorCount} indicators</span>`
                 : result.symbol;
+            
+            // Success rate badge class
+            let rateClass = "badge-rate";
+            if (successRate >= 60) rateClass = "success-rate-high";
+            else if (successRate >= 40) rateClass = "success-rate-medium";
+            else rateClass = "success-rate-low";
 
             html += `<tr class="${rowClass}">
-                <td class="rank">${globalIndex}</td>
+                <td class="rank center">${globalIndex}</td>
                 <td class="symbol">${symbolDisplay}</td>
-                <td class="col-indicator"><div class="indicator-single">${indicatorDisplay}</div></td>
+                <td class="indicator">${indicatorDisplay}</td>
                 <td class="center">${hasNoData ? '<span class="badge badge-warning">No Data</span>' : totalSignals}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-success">${successful}</span>`}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-failure">${failed}</span>`}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-open">${openTrades}</span>`}</td>
-                <td class="center">${hasNoData ? '<span class="badge badge-warning">N/A</span>' : `<span class="badge badge-rate success-rate-${successClass}">${successRate}%</span>`}</td>
+                <td class="center">${hasNoData ? '<span class="badge badge-warning">N/A</span>' : `<span class="badge badge-rate ${rateClass}">${successRate}%</span>`}</td>
                 <td class="center"><a href="${viewDetailsUrl}" class="btn-view" target="_blank" rel="noopener noreferrer">VIEW DETAILS</a></td>
             </tr>`;
         });
@@ -513,6 +543,20 @@ function setupIndicatorFiltering() {
     if (!listElement) return;
     
     listElement.addEventListener('click', function(e) {
+        // Handle Select All button
+        if (e.target.id === 'btnSelectAllIndicators' || e.target.closest('#btnSelectAllIndicators')) {
+            e.stopPropagation();
+            selectAllIndicators();
+            return;
+        }
+        
+        // Handle Clear All button
+        if (e.target.id === 'btnClearAllIndicators' || e.target.closest('#btnClearAllIndicators')) {
+            e.stopPropagation();
+            clearAllIndicators();
+            return;
+        }
+        
         const badge = e.target.closest('.indicator-badge');
         if (!badge) return;
         
@@ -528,23 +572,12 @@ function setupIndicatorFiltering() {
             }
         }
         
-        const countElement = document.getElementById('indicatorCount');
-        if (countElement) {
-            const totalIndicators = document.querySelectorAll('.indicator-badge').length;
-            const selectedCount = selectedIndicators.length;
-            if (selectedCount > 0) {
-                countElement.textContent = `${selectedCount}/${totalIndicators}`;
-                countElement.style.background = '#f59e0b';
-            } else {
-                countElement.textContent = `${totalIndicators}`;
-                countElement.style.background = '#3b82f6';
-            }
-        }
+        updateIndicatorCount();
         
         // Smart filtering: If data already loaded, filter immediately
         if (allResults && allResults.length > 0) {
             console.log('[INDICATOR] Data already loaded, filtering immediately...');
-            filterBySelectedIndicators();
+            applyAllFilters(); // Use applyAllFilters to include price filter
         } else {
             // No data yet - just show notification
             if (selectedIndicators.length > 0) {
@@ -552,6 +585,66 @@ function setupIndicatorFiltering() {
             }
         }
     });
+}
+
+// Select all indicators
+function selectAllIndicators() {
+    const badges = document.querySelectorAll('.indicator-badge');
+    selectedIndicators = [];
+    
+    badges.forEach(badge => {
+        badge.classList.add('selected');
+        const indicatorName = badge.textContent.trim();
+        if (!selectedIndicators.includes(indicatorName)) {
+            selectedIndicators.push(indicatorName);
+        }
+    });
+    
+    updateIndicatorCount();
+    
+    // If data already loaded, filter immediately
+    if (allResults && allResults.length > 0) {
+        console.log('[INDICATOR] Selecting all indicators, filtering immediately...');
+        applyAllFilters(); // Use applyAllFilters to include price filter
+    } else {
+        showNotification(`All ${selectedIndicators.length} indicators selected. Click ANALYZE to see results.`, 'info');
+    }
+}
+
+// Clear all indicator selections
+function clearAllIndicators() {
+    const badges = document.querySelectorAll('.indicator-badge');
+    selectedIndicators = [];
+    
+    badges.forEach(badge => {
+        badge.classList.remove('selected');
+    });
+    
+    updateIndicatorCount();
+    
+    // If data already loaded, show all results
+    if (allResults && allResults.length > 0) {
+        console.log('[INDICATOR] Clearing all indicators, showing all results...');
+        applyAllFilters(); // Use applyAllFilters to include price filter
+    } else {
+        showNotification('All selections cleared', 'info');
+    }
+}
+
+// Update indicator count badge
+function updateIndicatorCount() {
+    const countElement = document.getElementById('indicatorCount');
+    if (countElement) {
+        const totalIndicators = document.querySelectorAll('.indicator-badge').length;
+        const selectedCount = selectedIndicators.length;
+        if (selectedCount > 0) {
+            countElement.textContent = `${selectedCount}/${totalIndicators}`;
+            countElement.style.background = '#f59e0b';
+        } else {
+            countElement.textContent = `${totalIndicators}`;
+            countElement.style.background = '#3b82f6';
+        }
+    }
 }
 
 // Filter existing results by selected indicators
@@ -563,13 +656,25 @@ function filterBySelectedIndicators() {
 
     let filteredResults;
     
+    // Check if we're in grouped mode
+    const groupCheckbox = document.getElementById('groupByCompany');
+    const isGrouped = groupCheckbox && groupCheckbox.checked;
+    
+    // Determine which data source to use
+    const sourceData = isGrouped ? ungroupedResults : allResults;
+    
+    if (!sourceData || sourceData.length === 0) {
+        console.log('[INDICATOR] No source data to filter');
+        return;
+    }
+    
     // If no indicators selected, show all
     if (selectedIndicators.length === 0) {
-        filteredResults = [...allResults];
+        filteredResults = [...sourceData];
         showNotification(`Showing all ${filteredResults.length} signals`, 'success');
     } else {
         // Filter to only selected indicators
-        filteredResults = allResults.filter(result => {
+        filteredResults = sourceData.filter(result => {
             let resultIndicator = result.indicator;
             
             // Handle MACD naming
@@ -586,9 +691,21 @@ function filterBySelectedIndicators() {
     // Apply smart sorting to filtered results
     filteredResults = applySmartSorting(filteredResults);
 
-    // Re-render with filtered and sorted data
+    // Re-render with filtered and sorted data based on view mode
     dashboardCurrentPage = 1; // Reset to page 1
-    displayResults(filteredResults, null, null);
+    
+    if (isGrouped) {
+        // Group the filtered results and display
+        const groupedResults = groupResultsByCompany(filteredResults);
+        allResults = groupedResults; // Update allResults with grouped data
+        const target = document.getElementById('dashboardTarget').value;
+        const days = document.getElementById('dashboardDays').value;
+        displayGroupedResults(groupedResults, target, days, filteredResults.length);
+    } else {
+        // Display ungrouped results
+        allResults = filteredResults; // Update allResults
+        displayResults(filteredResults, null, null);
+    }
 }
 
 // Smart search - searches ALL results across all pages
@@ -647,7 +764,8 @@ function setupResultsSearch() {
             if (isGrouped) {
                 const target = document.getElementById('dashboardTarget').value;
                 const days = document.getElementById('dashboardDays').value;
-                displayGroupedResults(filteredResults, target, days);
+                // Pass original ungrouped count for grouped view
+                displayGroupedResults(filteredResults, target, days, ungroupedResults ? ungroupedResults.length : filteredResults.length);
             } else {
                 displayResults(filteredResults, null, null);
             }
@@ -711,7 +829,8 @@ function setupResultsSearch() {
             if (isGrouped) {
                 const target = document.getElementById('dashboardTarget').value;
                 const days = document.getElementById('dashboardDays').value;
-                displayGroupedResults(filteredResults, target, days);
+                // Pass original ungrouped count for grouped view
+                displayGroupedResults(filteredResults, target, days, ungroupedResults ? ungroupedResults.length : filteredResults.length);
             } else {
                 displayResults(filteredResults, null, null);
             }
@@ -809,18 +928,24 @@ function displaySearchResults(results, searchTerm) {
 
             // Show total count badge if company has multiple signals
             const symbolDisplay = isFirstInGroup && totalIndicatorCount > 1
-                ? `${result.symbol}<span class="indicator-count-badge">${totalIndicatorCount} signals</span>`
+                ? `${result.symbol}<span class="indicator-count-badge">${totalIndicatorCount} indicators</span>`
                 : result.symbol;
+            
+            // Success rate badge class
+            let rateClass = "badge-rate";
+            if (successRate >= 60) rateClass = "success-rate-high";
+            else if (successRate >= 40) rateClass = "success-rate-medium";
+            else rateClass = "success-rate-low";
 
             html += `<tr class="${rowClass}">
-                <td class="rank">${globalIndex}</td>
+                <td class="rank center">${globalIndex}</td>
                 <td class="symbol">${symbolDisplay}</td>
-                <td class="col-indicator"><div class="indicator-single">${indicatorDisplay}</div></td>
+                <td class="indicator">${indicatorDisplay}</td>
                 <td class="center">${hasNoData ? '<span class="badge badge-warning">No Data</span>' : totalSignals}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-success">${successful}</span>`}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-failure">${failed}</span>`}</td>
                 <td class="center">${hasNoData ? '-' : `<span class="badge badge-open">${openTrades}</span>`}</td>
-                <td class="center">${hasNoData ? '<span class="badge badge-warning">N/A</span>' : `<span class="badge badge-rate success-rate-${successClass}">${successRate}%</span>`}</td>
+                <td class="center">${hasNoData ? '<span class="badge badge-warning">N/A</span>' : `<span class="badge badge-rate ${rateClass}">${successRate}%</span>`}</td>
                 <td class="center"><a href="${viewDetailsUrl}" class="btn-view" target="_blank" rel="noopener noreferrer">VIEW DETAILS</a></td>
             </tr>`;
         });
@@ -983,11 +1108,227 @@ function applyMinSignalsFilterToResults() {
     }
 }
 
+// =========================================================
+// PRICE FILTERING
+// =========================================================
+async function loadLatestPrices() {
+    try {
+        console.log('📊 [PRICES] Loading latest prices...');
+        const priceFilter = document.getElementById('priceFilter');
+        if (priceFilter) {
+            priceFilter.disabled = true;
+            priceFilter.style.opacity = '0.5';
+        }
+        
+        // Get unique symbols from ungroupedResults (only companies with signals)
+        let symbolsToFetch = [];
+        if (ungroupedResults && ungroupedResults.length > 0) {
+            const uniqueSymbols = [...new Set(ungroupedResults.map(r => r.symbol))];
+            symbolsToFetch = uniqueSymbols;
+            console.log(`📊 [PRICES] Fetching prices for ${symbolsToFetch.length} companies with signals`);
+        } else {
+            console.log('⚠️ [PRICES] No data loaded yet, will fetch prices after data loads');
+            if (priceFilter) {
+                priceFilter.disabled = false;
+                priceFilter.style.opacity = '1';
+            }
+            return; // Don't fetch prices if no data loaded yet
+        }
+        
+        // Build URL with symbols parameter
+        let url = '/api/latest-prices';
+        if (symbolsToFetch.length > 0) {
+            url += `?symbols=${encodeURIComponent(symbolsToFetch.join(','))}`;
+        }
+        
+        const response = await fetch(url);
+        latestPrices = await response.json();
+        console.log(`✅ [PRICES] Loaded prices for ${Object.keys(latestPrices).length} symbols`);
+        
+        if (priceFilter) {
+            priceFilter.disabled = false;
+            priceFilter.style.opacity = '1';
+        }
+        
+        // Show notification
+        showNotification(`Prices loaded for ${Object.keys(latestPrices).length} companies`, 'success');
+    } catch (error) {
+        console.error('❌ [PRICES] Failed to load prices:', error);
+        latestPrices = {};
+        
+        const priceFilter = document.getElementById('priceFilter');
+        if (priceFilter) {
+            priceFilter.disabled = false;
+            priceFilter.style.opacity = '1';
+        }
+        
+        showNotification('Failed to load prices. Price filter may not work correctly.', 'error');
+    }
+}
+
+// Apply price filter to results
+function applyPriceFilter(results, priceRange) {
+    if (!priceRange || priceRange === 'all') {
+        return results;
+    }
+    
+    // Check if prices are loaded
+    if (!latestPrices || Object.keys(latestPrices).length === 0) {
+        console.warn('⚠️ [PRICE FILTER] Prices not loaded yet, cannot filter');
+        showNotification('Loading prices... Please wait and try again.', 'warning');
+        return results;
+    }
+    
+    // Parse price range
+    let minPrice = 0;
+    let maxPrice = Infinity;
+    
+    if (priceRange === '0-50') {
+        minPrice = 0;
+        maxPrice = 50;
+    } else if (priceRange === '50-100') {
+        minPrice = 50;
+        maxPrice = 100;
+    } else if (priceRange === '100-500') {
+        minPrice = 100;
+        maxPrice = 500;
+    } else if (priceRange === '500-1000') {
+        minPrice = 500;
+        maxPrice = 1000;
+    } else if (priceRange === '1000+') {
+        minPrice = 1000;
+        maxPrice = Infinity;
+    }
+    
+    // Filter results based on price
+    const filtered = results.filter(result => {
+        const priceData = latestPrices[result.symbol];
+        if (!priceData) {
+            // If price not available for this symbol, exclude it from filtered results
+            return false;
+        }
+        
+        const price = priceData.price;
+        // FIXED: For ranges like 50-100, use <= for maxPrice to include boundary values
+        if (maxPrice === Infinity) {
+            return price >= minPrice;
+        } else {
+            return price >= minPrice && price <= maxPrice;
+        }
+    });
+    
+    console.log(`📊 [PRICE FILTER] Filtered from ${results.length} to ${filtered.length} results (${priceRange})`);
+    console.log(`📊 [PRICE FILTER] Price range: ₹${minPrice} - ${maxPrice === Infinity ? '∞' : '₹' + maxPrice}`);
+    return filtered;
+}
+
+// Enable price filter after first analysis
+function enablePriceFilter() {
+    const priceFilter = document.getElementById('priceFilter');
+    if (priceFilter) {
+        priceFilter.disabled = false;
+        priceFilter.style.opacity = '1';
+        priceFilter.style.cursor = 'pointer';
+        console.log('✅ [PRICE FILTER] Enabled after first analysis');
+    }
+}
+
+// Disable price filter on page load
+function disablePriceFilter() {
+    const priceFilter = document.getElementById('priceFilter');
+    if (priceFilter) {
+        priceFilter.disabled = true;
+        priceFilter.style.opacity = '0.5';
+        priceFilter.style.cursor = 'not-allowed';
+        priceFilter.value = 'all'; // Reset to "All Prices"
+        console.log('🔒 [PRICE FILTER] Disabled - Run analysis first');
+    }
+}
+
+// Setup price filter dropdown
+function setupPriceFilter() {
+    const priceFilter = document.getElementById('priceFilter');
+    if (!priceFilter) return;
+    
+    priceFilter.addEventListener('change', function() {
+        const priceRange = this.value;
+        console.log(`📊 [PRICE FILTER] Selected: ${priceRange}`);
+        
+        // If data is loaded, apply filter immediately
+        if (ungroupedResults && ungroupedResults.length > 0) {
+            applyAllFilters();
+        }
+    });
+}
+
+// Apply all filters (indicators + price + min signals)
+function applyAllFilters() {
+    if (!ungroupedResults || ungroupedResults.length === 0) {
+        console.log('[FILTER] No data to filter');
+        return;
+    }
+    
+    let filteredResults = [...ungroupedResults];
+    
+    // 1. Apply indicator filter
+    if (selectedIndicators.length > 0) {
+        filteredResults = filteredResults.filter(result => {
+            let resultIndicator = result.indicator;
+            
+            // Handle MACD naming
+            if (resultIndicator === 'Short' || resultIndicator === 'Long' || resultIndicator === 'Standard') {
+                resultIndicator = `MACD_${resultIndicator}`;
+            }
+            
+            return selectedIndicators.includes(resultIndicator);
+        });
+    }
+    
+    // 2. Apply price filter
+    const priceFilter = document.getElementById('priceFilter');
+    if (priceFilter) {
+        const priceRange = priceFilter.value;
+        filteredResults = applyPriceFilter(filteredResults, priceRange);
+    }
+    
+    // 3. Apply smart sorting
+    filteredResults = applySmartSorting(filteredResults);
+    
+    // 4. Check if grouped mode
+    const groupCheckbox = document.getElementById('groupByCompany');
+    const isGrouped = groupCheckbox && groupCheckbox.checked;
+    
+    // Reset to page 1
+    dashboardCurrentPage = 1;
+    
+    if (isGrouped) {
+        // Group and display
+        const groupedResults = groupResultsByCompany(filteredResults);
+        allResults = groupedResults;
+        const target = document.getElementById('dashboardTarget').value;
+        const days = document.getElementById('dashboardDays').value;
+        displayGroupedResults(groupedResults, target, days, filteredResults.length);
+    } else {
+        // Display ungrouped
+        allResults = filteredResults;
+        displayResults(filteredResults, null, null);
+    }
+    
+    // Show notification
+    const priceRange = priceFilter ? priceFilter.value : 'all';
+    const priceLabel = priceRange === 'all' ? '' : ` (${priceRange})`;
+    const indicatorLabel = selectedIndicators.length > 0 ? ` (${selectedIndicators.length} indicators)` : '';
+    showNotification(`Showing ${filteredResults.length} signals${indicatorLabel}${priceLabel}`, 'success');
+}
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
         setupIndicatorFiltering();
         setupResultsSearch();
         setupGlobalSearch();
+        setupPriceFilter();
+        disablePriceFilter(); // Disable price filter on page load
+        // Don't load prices on page load - will load after data is fetched
         
         // Setup min signals dropdown listener
         const minSignalsDropdown = document.getElementById('minSignals');
@@ -1005,6 +1346,9 @@ if (document.readyState === 'loading') {
     setupIndicatorFiltering();
     setupResultsSearch();
     setupGlobalSearch();
+    setupPriceFilter();
+    disablePriceFilter(); // Disable price filter on page load
+    // Don't load prices on page load - will load after data is fetched
     
     // Setup min signals dropdown listener
     const minSignalsDropdown = document.getElementById('minSignals');
@@ -1174,7 +1518,8 @@ async function analyzeDashboardGrouped() {
             const totalTime = ((endTime - startTime) / 1000).toFixed(2);
             console.log(`✅ [DASHBOARD] Grouped ${groupedResults.length} companies in ${totalTime}s`);
             
-            displayGroupedResults(groupedResults, target, days);
+            // Pass the original ungrouped count
+            displayGroupedResults(groupedResults, target, days, ungroupedResults.length);
             return;
         }
 
@@ -1282,7 +1627,7 @@ function groupResultsByCompany(ungroupedResults) {
 }
 
 // Display grouped results (one row per company)
-function displayGroupedResults(results, target, days) {
+function displayGroupedResults(results, target, days, originalCount) {
     const container = document.getElementById('resultsContainer');
     
     if (!results || results.length === 0) {
@@ -1290,47 +1635,62 @@ function displayGroupedResults(results, target, days) {
         return;
     }
 
+    // Use original ungrouped count if provided, otherwise count from ungroupedResults
+    const totalSignalCount = originalCount || (ungroupedResults ? ungroupedResults.length : results.length);
+
     let html = `
+        <!-- Summary Bar -->
+        <div class="results-summary-bar">
+            <div class="total-signals-count">
+                📊 Total: <strong>${totalSignalCount}</strong> signals across <strong>${results.length}</strong> companies
+            </div>
+        </div>
+        
         <table class="results-table">
             <thead>
                 <tr>
-                    <th>NO.</th>
-                    <th>COMPANY SYMBOL</th>
-                    <th>INDICATORS</th>
-                    <th>TOTAL SIGNALS</th>
-                    <th>SUCCESS</th>
-                    <th>FAILURE</th>
-                    <th>OPEN</th>
-                    <th>SUCCESS %</th>
-                    <th>ACTION</th>
+                    <th class="col-no">NO.</th>
+                    <th class="col-symbol">COMPANY</th>
+                    <th class="col-indicator">INDICATORS</th>
+                    <th class="col-total center">TOTAL</th>
+                    <th class="col-success center">SUCCESS</th>
+                    <th class="col-failure center">FAILURE</th>
+                    <th class="col-open center">OPEN</th>
+                    <th class="col-rate center">SUCCESS %</th>
+                    <th class="col-action center">ACTION</th>
                 </tr>
             </thead>
             <tbody>
     `;
 
     results.forEach((result, index) => {
-        const successClass = result.successRate >= 50 ? 'success-high' : 'success-low';
+        // Success rate badge class
+        let rateClass = 'badge-rate';
+        if (result.successRate >= 60) rateClass = 'success-rate-high';
+        else if (result.successRate >= 40) rateClass = 'success-rate-medium';
+        else rateClass = 'success-rate-low';
+        
         const indicatorBadge = result.indicator_count > 1 ? 
-            `<span class="badge badge-power">${result.indicator_count} signals</span>` : '';
+            `<span class="indicator-count-badge">${result.indicator_count} indicators</span>` : '';
         
         // Build URL with first indicator, target, and days
         const viewDetailsUrl = `/symbol/${result.symbol}?indicator=${encodeURIComponent(result.firstIndicator)}&target=${target}&days=${days}`;
         
         html += `
             <tr>
-                <td>${index + 1}</td>
-                <td>
-                    <strong>${result.symbol}</strong>
+                <td class="rank center">${index + 1}</td>
+                <td class="symbol">
+                    ${result.symbol}
                     ${indicatorBadge}
                 </td>
-                <td><small>${result.indicators}</small></td>
-                <td>${result.totalSignals}</td>
-                <td class="success-cell">${result.successful}</td>
-                <td class="failure-cell">${result.failed}</td>
-                <td class="open-cell">${result.open}</td>
-                <td class="${successClass}">${result.successRate}%</td>
-                <td>
-                    <a href="${viewDetailsUrl}" class="btn btn-sm btn-primary" target="_blank">
+                <td class="indicator">${result.indicators}</td>
+                <td class="center">${result.totalSignals}</td>
+                <td class="center"><span class="badge badge-success">${result.successful}</span></td>
+                <td class="center"><span class="badge badge-failure">${result.failed}</span></td>
+                <td class="center"><span class="badge badge-open">${result.open}</span></td>
+                <td class="center"><span class="badge ${rateClass}">${result.successRate}%</span></td>
+                <td class="center">
+                    <a href="${viewDetailsUrl}" class="btn-view" target="_blank">
                         VIEW DETAILS
                     </a>
                 </td>
