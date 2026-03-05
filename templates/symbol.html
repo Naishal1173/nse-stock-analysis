@@ -9,6 +9,84 @@
             <!-- <a href="/" class="back-button">← Back to Dashboard</a> -->
             <h1 class="symbol-title">{{ symbol }}</h1>
         </div>
+        <div class="symbol-header-right">
+            <button id="monthlyAnalysisBtn" class="btn btn-secondary">
+                📅 Monthly Performance
+            </button>
+        </div>
+    </div>
+
+    <!-- Monthly Analysis Section (Hidden by default) -->
+    <div id="monthlyAnalysisSection" class="monthly-analysis-section" style="display: none;">
+        <div class="monthly-analysis-header">
+            <h3>📊 Monthly Performance Analysis</h3>
+            <p class="monthly-description">Select a month to see profit/loss if you bought on the first signal date</p>
+        </div>
+        
+        <div class="monthly-controls">
+            <div class="control-group">
+                <label for="monthlyIndicator">INDICATOR:</label>
+                <select id="monthlyIndicator" class="filter-select">
+                    <option value="">Select Indicator</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="monthSelect">MONTH:</label>
+                <select id="monthSelect" class="filter-select">
+                    <option value="">Select Month</option>
+                </select>
+            </div>
+            
+            <button id="analyzeMonthBtn" class="btn btn-primary">
+                ANALYZE MONTH
+            </button>
+            
+            <button id="closeMonthlyBtn" class="btn btn-secondary-outline">
+                ✕ Close
+            </button>
+        </div>
+        
+        <div id="monthlyLoading" class="analysis-loading" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p>Analyzing monthly performance...</p>
+        </div>
+        
+        <div id="monthlyResult" class="monthly-result" style="display: none;">
+            <div class="monthly-summary">
+                <div class="monthly-card">
+                    <div class="card-label">Selected Month</div>
+                    <div class="card-value" id="selectedMonth">-</div>
+                </div>
+                <div class="monthly-card">
+                    <div class="card-label">First Signal Date</div>
+                    <div class="card-value" id="firstSignalDate">-</div>
+                </div>
+                <div class="monthly-card">
+                    <div class="card-label">Buy Price</div>
+                    <div class="card-value" id="monthlyBuyPrice">-</div>
+                </div>
+                <div class="monthly-card">
+                    <div class="card-label">Month End Price</div>
+                    <div class="card-value" id="monthEndPrice">-</div>
+                </div>
+                <div class="monthly-card highlight">
+                    <div class="card-label">Profit/Loss</div>
+                    <div class="card-value" id="monthlyProfitLoss">-</div>
+                </div>
+                <div class="monthly-card highlight">
+                    <div class="card-label">Return %</div>
+                    <div class="card-value" id="monthlyReturn">-</div>
+                </div>
+            </div>
+            
+            <div class="monthly-details">
+                <h4>📈 Daily Performance</h4>
+                <div class="monthly-chart-container">
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+            </div>
+        </div>
     </div>
 
    <div class="analysis-section">

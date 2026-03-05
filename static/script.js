@@ -2041,6 +2041,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     if (typeof SYMBOL !== 'undefined') {
+        // Initialize monthly analysis
+        initializeMonthlyAnalysis();
+        
         // Don't load indicator table on page load - it's slow
         // loadSymbolIndicators();
         
@@ -2468,3 +2471,320 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+
+// ============================================
+// MONTHLY PERFORMANCE ANALYSIS
+// ============================================
+
+function initializeMonthlyAnalysis() {
+    const monthlyBtn = document.getElementById('monthlyAnalysisBtn');
+    const monthlySection = document.getElementById('monthlyAnalysisSection');
+    const closeBtn = document.getElementById('closeMonthlyBtn');
+    const analyzeMonthBtn = document.getElementById('analyzeMonthBtn');
+    const monthlyIndicatorSelect = document.getElementById('monthlyIndicator');
+    
+    if (!monthlyBtn) return;
+    
+    // Toggle monthly analysis section
+    monthlyBtn.addEventListener('click', function() {
+        if (monthlySection.style.display === 'none') {
+            monthlySection.style.display = 'block';
+            loadMonthlyIndicators();
+        } else {
+            monthlySection.style.display = 'none';
+        }
+    });
+    
+    // Close button
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function() {
+            monthlySection.style.display = 'none';
+        });
+    }
+    
+    // When indicator changes, reload available months
+    if (monthlyIndicatorSelect) {
+        monthlyIndicatorSelect.addEventListener('change', function() {
+            if (this.value) {
+                loadAvailableMonths();
+            } else {
+                const monthSelect = document.getElementById('monthSelect');
+                monthSelect.innerHTML = '<option value="">Select Month</option>';
+            }
+        });
+    }
+    
+    // Analyze month button
+    if (analyzeMonthBtn) {
+        analyzeMonthBtn.addEventListener('click', analyzeMonthlyPerformance);
+    }
+}
+
+async function loadMonthlyIndicators() {
+    try {
+        const response = await fetch(`/api/symbol/${SYMBOL}/indicators`);
+        const data = await response.json();
+        
+        const select = document.getElementById('monthlyIndicator');
+        select.innerHTML = '<option value="">Select Indicator</option>';
+        
+        // Get unique indicators with BUY signals
+        const indicators = new Set();
+        data.forEach(item => {
+            if (item.signal === 'BUY') {
+                indicators.add(item.indicator);
+            }
+        });
+        
+        Array.from(indicators).sort().forEach(indicator => {
+            const option = document.createElement('option');
+            option.value = indicator;
+            option.textContent = indicator;
+            select.appendChild(option);
+        });
+        
+        console.log(`📅 [MONTHLY] Loaded ${indicators.size} indicators`);
+    } catch (error) {
+        console.error('❌ [MONTHLY] Error loading indicators:', error);
+        showError('Failed to load indicators');
+    }
+}
+
+async function loadAvailableMonths() {
+    try {
+        // Get the selected indicator first
+        const indicator = document.getElementById('monthlyIndicator').value;
+        
+        if (!indicator) {
+            console.log('📅 [MONTHLY] No indicator selected yet');
+            return;
+        }
+        
+        console.log(`📅 [MONTHLY] Loading months for indicator: ${indicator}`);
+        
+        // Use the analyze API to get all historical signals
+        const response = await fetch(`/api/analyze?symbol=${SYMBOL}&indicator=${encodeURIComponent(indicator)}&target=5&days=30`);
+        const data = await response.json();
+        
+        console.log(`📅 [MONTHLY] API response:`, data);
+        
+        if (!data.details || data.details.length === 0) {
+            console.log('📅 [MONTHLY] No signal data found');
+            const select = document.getElementById('monthSelect');
+            select.innerHTML = '<option value="">No months available</option>';
+            return;
+        }
+        
+        console.log(`📅 [MONTHLY] Found ${data.details.length} signals`);
+        console.log(`📅 [MONTHLY] Sample detail:`, data.details[0]);
+        
+        // Extract unique months from buy dates (note: field is buyDate, not buy_date)
+        const months = new Set();
+        data.details.forEach(item => {
+            if (item.buyDate) {
+                const date = new Date(item.buyDate);
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                months.add(monthKey);
+            }
+        });
+        
+        // Sort months in descending order (most recent first)
+        const sortedMonths = Array.from(months).sort().reverse();
+        
+        const select = document.getElementById('monthSelect');
+        select.innerHTML = '<option value="">Select Month</option>';
+        
+        sortedMonths.forEach(monthKey => {
+            const [year, month] = monthKey.split('-');
+            const date = new Date(year, month - 1);
+            const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+            
+            const option = document.createElement('option');
+            option.value = monthKey;
+            option.textContent = monthName;
+            select.appendChild(option);
+        });
+        
+        console.log(`📅 [MONTHLY] Loaded ${sortedMonths.length} months`);
+    } catch (error) {
+        console.error('❌ [MONTHLY] Error loading months:', error);
+        showError('Failed to load months');
+    }
+}
+
+async function analyzeMonthlyPerformance() {
+    const indicator = document.getElementById('monthlyIndicator').value;
+    const monthKey = document.getElementById('monthSelect').value;
+    
+    if (!indicator) {
+        showNotification('Please select an indicator', 'warning');
+        return;
+    }
+    
+    if (!monthKey) {
+        showNotification('Please select a month', 'warning');
+        return;
+    }
+    
+    const [year, month] = monthKey.split('-');
+    
+    console.log(`📅 [MONTHLY] Analyzing ${indicator} for ${monthKey}`);
+    
+    // Show loading
+    document.getElementById('monthlyLoading').style.display = 'block';
+    document.getElementById('monthlyResult').style.display = 'none';
+    
+    try {
+        // Get all signals for this indicator
+        const response = await fetch(`/api/analyze?symbol=${SYMBOL}&indicator=${encodeURIComponent(indicator)}&target=5&days=30`);
+        const data = await response.json();
+        
+        if (!data.details || data.details.length === 0) {
+            showNotification('No BUY signals found', 'warning');
+            document.getElementById('monthlyLoading').style.display = 'none';
+            return;
+        }
+        
+        // Filter signals for selected month
+        const monthSignals = data.details.filter(item => {
+            if (!item.buyDate) return false;
+            const itemDate = new Date(item.buyDate);
+            const itemMonthKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`;
+            return itemMonthKey === monthKey;
+        });
+        
+        if (monthSignals.length === 0) {
+            showNotification('No BUY signals found for this month', 'warning');
+            document.getElementById('monthlyLoading').style.display = 'none';
+            return;
+        }
+        
+        // Sort by date to get first signal
+        monthSignals.sort((a, b) => new Date(a.buyDate) - new Date(b.buyDate));
+        const firstSignal = monthSignals[0];
+        const firstSignalDate = firstSignal.buyDate;
+        const buyPrice = firstSignal.buyPrice;
+        
+        console.log(`📅 [MONTHLY] First signal date: ${firstSignalDate}, Buy price: ₹${buyPrice}`);
+        
+        // Get price data for the entire month
+        const chartResponse = await fetch(`/api/symbol/${SYMBOL}/chart`);
+        const chartData = await chartResponse.json();
+        
+        // Filter data for the selected month
+        const monthData = chartData.filter(d => {
+            const date = new Date(d.date);
+            const dateMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            return dateMonthKey === monthKey;
+        });
+        
+        if (monthData.length === 0) {
+            showNotification('No price data found for this month', 'warning');
+            document.getElementById('monthlyLoading').style.display = 'none';
+            return;
+        }
+        
+        // Get month end price (last trading day of month)
+        const monthEndData = monthData[monthData.length - 1];
+        const monthEndPrice = monthEndData.price;
+        
+        // Calculate profit/loss
+        const profitLoss = monthEndPrice - buyPrice;
+        const returnPercent = ((profitLoss / buyPrice) * 100).toFixed(2);
+        
+        console.log(`📅 [MONTHLY] Month end price: ₹${monthEndPrice}, P/L: ₹${profitLoss}, Return: ${returnPercent}%`);
+        
+        // Display results
+        displayMonthlyResults({
+            monthKey,
+            firstSignalDate,
+            buyPrice,
+            monthEndPrice,
+            profitLoss,
+            returnPercent,
+            monthData,
+            indicator
+        });
+        
+    } catch (error) {
+        console.error('❌ [MONTHLY] Error analyzing month:', error);
+        showError('Failed to analyze monthly performance');
+    } finally {
+        document.getElementById('monthlyLoading').style.display = 'none';
+    }
+}
+
+function displayMonthlyResults(data) {
+    const { monthKey, firstSignalDate, buyPrice, monthEndPrice, profitLoss, returnPercent, monthData, indicator } = data;
+    
+    // Format month name
+    const [year, month] = monthKey.split('-');
+    const monthName = new Date(year, month - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+    
+    // Update summary cards
+    document.getElementById('selectedMonth').textContent = monthName;
+    document.getElementById('firstSignalDate').textContent = new Date(firstSignalDate).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+    });
+    document.getElementById('monthlyBuyPrice').textContent = `₹${buyPrice.toFixed(2)}`;
+    document.getElementById('monthEndPrice').textContent = `₹${monthEndPrice.toFixed(2)}`;
+    
+    // Profit/Loss with color
+    const plElement = document.getElementById('monthlyProfitLoss');
+    plElement.textContent = `₹${profitLoss.toFixed(2)}`;
+    
+    // Return % with color
+    const returnElement = document.getElementById('monthlyReturn');
+    returnElement.textContent = `${returnPercent}%`;
+    
+    // Show result section
+    document.getElementById('monthlyResult').style.display = 'block';
+    
+    // Create simple text-based chart
+    createMonthlyChart(monthData, buyPrice, firstSignalDate);
+    
+    console.log(`📅 [MONTHLY] Results displayed - Return: ${returnPercent}%`);
+}
+
+function createMonthlyChart(monthData, buyPrice, firstSignalDate) {
+    const container = document.querySelector('.monthly-chart-container');
+    
+    // Create simple HTML table chart
+    let html = '<table class="monthly-price-table">';
+    html += '<thead><tr><th>Date</th><th>Price</th><th>Change from Buy</th><th>% Change</th></tr></thead>';
+    html += '<tbody>';
+    
+    monthData.forEach(d => {
+        const change = d.price - buyPrice;
+        const changePercent = ((change / buyPrice) * 100).toFixed(2);
+        const isSignalDate = d.date === firstSignalDate;
+        const rowClass = isSignalDate ? 'signal-row' : (change >= 0 ? 'profit-row' : 'loss-row');
+        
+        html += `<tr class="${rowClass}">`;
+        html += `<td>${new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${isSignalDate ? ' 🎯' : ''}</td>`;
+        html += `<td>₹${d.price.toFixed(2)}</td>`;
+        html += `<td class="${change >= 0 ? 'profit' : 'loss'}">₹${change.toFixed(2)}</td>`;
+        html += `<td class="${change >= 0 ? 'profit' : 'loss'}">${changePercent}%</td>`;
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+
+// ============================================
+// ADVANCED SCANNER BUTTON
+// ============================================
+document.addEventListener('DOMContentLoaded', function() {
+    const advancedScannerBtn = document.getElementById('advancedScannerBtn');
+    
+    if (advancedScannerBtn) {
+        advancedScannerBtn.addEventListener('click', function() {
+            window.open('/advanced-scanner', '_blank');
+        });
+    }
+});

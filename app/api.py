@@ -15,6 +15,8 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import threading
+import hashlib
+import json
 from io import BytesIO
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
@@ -803,6 +805,10 @@ def diagnostic_page(request: Request):
 @app.get("/indicator-analytics", response_class=HTMLResponse)
 def indicator_analytics_page(request: Request):
     return templates.TemplateResponse("indicator_analytics.html", {"request": request})
+
+@app.get("/advanced-scanner", response_class=HTMLResponse)
+def advanced_scanner_page(request: Request):
+    return templates.TemplateResponse("advanced_scanner.html", {"request": request})
 
 @app.get("/api/symbols")
 def get_symbols(q: str = Query("")):
@@ -2173,7 +2179,398 @@ def analyze_grouped(
                 return_db(conn)
             except:
                 pass
-                pass
+
+
+# =========================================================
+# TRADING PERFORMANCE SCANNER - ANALYZE HISTORICAL SIGNALS
+# =========================================================
+@app.get("/api/day-trading-scan")
+def day_trading_scan(
+    target: float = Query(5.0, description="Target profit percentage"),
+    stop_loss: float = Query(3.0, description="Stop loss percentage"),
+    from_date: str = Query(None, description="Start date (YYYY-MM-DD)"),
+    to_date: str = Query(None, description="End date (YYYY-MM-DD)"),
+    holding_days: int = Query(30, ge=1, le=365, description="Maximum days to hold position"),
+    indicator: str = Query("ALL", description="Filter by specific indicator or ALL"),
+    use_cache: bool = Query(True, description="Use cached results if available")
+):
+    """
+    Trading Performance Scanner: Analyze historical BUY signals to see average profit/loss
+    For each BUY signal in date range, check if target or stop-loss was hit within holding period
+    Returns companies with their profit/loss statistics
+    
+    Uses database table for persistent caching
+    """
+    
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        
+        # Create cache table if not exists (only runs once)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS scanner_cache (
+                id SERIAL PRIMARY KEY,
+                cache_key TEXT UNIQUE NOT NULL,
+                target DECIMAL(5,2) NOT NULL,
+                stop_loss DECIMAL(5,2) NOT NULL,
+                from_date DATE,
+                to_date DATE,
+                holding_days INTEGER NOT NULL,
+                indicator TEXT NOT NULL,
+                results JSONB NOT NULL,
+                total_companies INTEGER NOT NULL,
+                cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_scanner_cache_key ON scanner_cache(cache_key)
+        """)
+        conn.commit()
+        
+        # Generate cache key
+        cache_params = f"{target}_{stop_loss}_{from_date}_{to_date}_{holding_days}_{indicator}"
+        cache_key = hashlib.md5(cache_params.encode()).hexdigest()
+        
+        print(f"[TRADING SCAN] 🔑 Cache key: {cache_key} (indicator={indicator})")
+        
+        # Check cache first (valid for 24 hours)
+        if use_cache:
+            cur.execute("""
+                SELECT results, total_companies, cached_at
+                FROM scanner_cache
+                WHERE cache_key = %s
+                AND cached_at > NOW() - INTERVAL '24 hours'
+            """, (cache_key,))
+            
+            cached = cur.fetchone()
+            if cached:
+                results, total_companies, cached_at = cached
+                print(f"[TRADING SCAN] ✅ Cache HIT - returning results from {cached_at}")
+                return {
+                    'results': results,
+                    'total_companies': total_companies,
+                    'criteria': {
+                        'target': target,
+                        'stop_loss': stop_loss,
+                        'holding_days': holding_days,
+                        'from_date': from_date,
+                        'to_date': to_date,
+                        'indicator': indicator
+                    },
+                    'cached': True,
+                    'cached_at': cached_at.strftime('%Y-%m-%d %H:%M:%S')
+                }
+            else:
+                print(f"[TRADING SCAN] ❌ Cache MISS - calculating...")
+        
+        print(f"[TRADING SCAN] target={target}%, stop_loss={stop_loss}%, holding_days={holding_days}")
+        print(f"[TRADING SCAN] from={from_date}, to={to_date}")
+        print(f"[TRADING SCAN] indicator={indicator}")
+        
+        # Get all symbols with BUY signals
+        cur.execute("SELECT DISTINCT symbol FROM daily_prices ORDER BY symbol")
+        symbols = [row[0] for row in cur.fetchall()]
+        
+        print(f"[TRADING SCAN] Analyzing {len(symbols)} symbols...")
+        
+        # Quick check: How many signals exist in the date range?
+        date_filter_check = ""
+        params_check = []
+        if from_date:
+            date_filter_check += " AND trade_date >= %s"
+            params_check.append(from_date)
+        if to_date:
+            date_filter_check += " AND trade_date <= %s"
+            params_check.append(to_date)
+        
+        # Count signals from all indicator tables
+        cur.execute(f"""
+            SELECT COUNT(*) FROM (
+                SELECT trade_date FROM smatbl WHERE signal = 'BUY' {date_filter_check}
+                UNION ALL
+                SELECT trade_date FROM rsitbl WHERE signal = 'BUY' {date_filter_check}
+                UNION ALL
+                SELECT trade_date FROM bbtbl WHERE signal = 'BUY' {date_filter_check}
+                UNION ALL
+                SELECT trade_date FROM macdtbl WHERE signal = 'BUY' {date_filter_check}
+                UNION ALL
+                SELECT trade_date FROM stochtbl WHERE signal = 'BUY' {date_filter_check}
+            ) AS all_signals
+        """, params_check * 5)
+        
+        total_signals_in_range = cur.fetchone()[0]
+        print(f"[TRADING SCAN] Total BUY signals in date range: {total_signals_in_range}")
+        
+        results = []
+        
+        processed_count = 0
+        for symbol in symbols:
+            processed_count += 1
+            if processed_count % 100 == 0:
+                print(f"[TRADING SCAN] Processed {processed_count}/{len(symbols)} symbols...")
+            
+            # Get all BUY signals for this symbol across all indicators
+            date_filter = ""
+            indicator_filter = ""
+            params = [symbol]
+            
+            if from_date:
+                date_filter += " AND trade_date >= %s"
+                params.append(from_date)
+            if to_date:
+                date_filter += " AND trade_date <= %s"
+                params.append(to_date)
+            
+            # Add indicator filter if not ALL
+            if indicator != "ALL":
+                indicator_filter = " AND indicator = %s"
+                indicator_filter_macd = " AND indicator_set = %s"
+            
+            # Query all indicator tables for BUY signals
+            if indicator == "ALL":
+                # Get all indicators
+                cur.execute(f"""
+                    SELECT DISTINCT all_signals.trade_date, dp.close_price, all_signals.indicator
+                    FROM (
+                        SELECT trade_date, symbol, indicator FROM smatbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                        UNION ALL
+                        SELECT trade_date, symbol, indicator FROM rsitbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                        UNION ALL
+                        SELECT trade_date, symbol, indicator FROM bbtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                        UNION ALL
+                        SELECT trade_date, symbol, indicator_set as indicator FROM macdtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                        UNION ALL
+                        SELECT trade_date, symbol, indicator FROM stochtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                    ) AS all_signals
+                    JOIN daily_prices dp ON dp.symbol = all_signals.symbol AND dp.trade_date = all_signals.trade_date
+                    ORDER BY all_signals.trade_date
+                """, params * 5)
+            else:
+                # Get specific indicator - need to determine which table
+                params_with_indicator = params + [indicator]
+                
+                # Check which table the indicator belongs to
+                if indicator.startswith('SMA'):
+                    table_query = f"SELECT trade_date, symbol, indicator FROM smatbl WHERE symbol = %s AND signal = 'BUY' {date_filter}{indicator_filter}"
+                elif indicator.startswith('RSI'):
+                    table_query = f"SELECT trade_date, symbol, indicator FROM rsitbl WHERE symbol = %s AND signal = 'BUY' {date_filter}{indicator_filter}"
+                elif indicator.startswith('BB'):
+                    table_query = f"SELECT trade_date, symbol, indicator FROM bbtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}{indicator_filter}"
+                elif indicator in ['Short', 'Long', 'Standard']:
+                    table_query = f"SELECT trade_date, symbol, indicator_set as indicator FROM macdtbl WHERE symbol = %s AND signal = 'BUY' {date_filter} AND indicator_set = %s"
+                elif indicator.startswith('STOCH'):
+                    table_query = f"SELECT trade_date, symbol, indicator FROM stochtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}{indicator_filter}"
+                else:
+                    # Default to all if unknown
+                    table_query = f"""
+                        SELECT trade_date, symbol, indicator FROM smatbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                        UNION ALL
+                        SELECT trade_date, symbol, indicator FROM rsitbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                        UNION ALL
+                        SELECT trade_date, symbol, indicator FROM bbtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                        UNION ALL
+                        SELECT trade_date, symbol, indicator_set as indicator FROM macdtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                        UNION ALL
+                        SELECT trade_date, symbol, indicator FROM stochtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                    """
+                    params_with_indicator = params * 5
+                
+                cur.execute(f"""
+                    SELECT DISTINCT all_signals.trade_date, dp.close_price, all_signals.indicator
+                    FROM ({table_query}) AS all_signals
+                    JOIN daily_prices dp ON dp.symbol = all_signals.symbol AND dp.trade_date = all_signals.trade_date
+                    ORDER BY all_signals.trade_date
+                """, params_with_indicator)
+            
+            buy_signals = cur.fetchall()
+            
+            if not buy_signals:
+                continue
+            
+            # Get ALL future prices for this symbol at once (OPTIMIZATION)
+            cur.execute("""
+                SELECT trade_date, high_price, low_price, close_price
+                FROM daily_prices
+                WHERE symbol = %s AND trade_date > %s
+                ORDER BY trade_date
+            """, (symbol, buy_signals[0][0]))  # Start from first signal date
+            
+            all_future_prices = cur.fetchall()
+            
+            # Create a dictionary for fast lookup: {date: (high, low, close)}
+            price_dict = {row[0]: (row[1], row[2], row[3]) for row in all_future_prices}
+            
+            profit_signals = 0
+            loss_signals = 0
+            no_action_signals = 0
+            total_profit_loss = 0.0
+            unique_indicators_filtered = set()  # Track indicators from filtered signals
+            
+            # For each BUY signal, check price movement within holding period
+            for signal_date, buy_price, indicator in buy_signals:
+                # Track indicator from filtered signals
+                unique_indicators_filtered.add(indicator)
+                
+                # Calculate target and stop-loss prices (convert Decimal to float)
+                target_price = float(buy_price) * (1 + target / 100)
+                stop_loss_price = float(buy_price) * (1 - stop_loss / 100)
+                
+                # Check each day until target or stop-loss is hit
+                hit_target = False
+                hit_stop_loss = False
+                
+                # Get next N days from price_dict
+                days_checked = 0
+                for future_date, (day_high, day_low, day_close) in price_dict.items():
+                    if future_date <= signal_date:
+                        continue
+                    
+                    days_checked += 1
+                    if days_checked > holding_days:
+                        break
+                    
+                    if float(day_high) >= target_price:
+                        # Target hit - PROFIT
+                        hit_target = True
+                        break
+                    elif float(day_low) <= stop_loss_price:
+                        # Stop-loss hit - LOSS
+                        hit_stop_loss = True
+                        break
+                
+                if hit_target:
+                    profit_signals += 1
+                    total_profit_loss += target
+                elif hit_stop_loss:
+                    loss_signals += 1
+                    total_profit_loss -= stop_loss
+                else:
+                    # Neither hit - count as no action
+                    no_action_signals += 1
+            
+            total_signals = profit_signals + loss_signals + no_action_signals
+            
+            if total_signals == 0:
+                continue
+            
+            success_rate = (profit_signals / total_signals) * 100
+            avg_profit_loss = total_profit_loss / total_signals if total_signals > 0 else 0
+            
+            # Get ALL indicators for this symbol (not just filtered ones)
+            # This shows which indicators the company has, regardless of filter
+            cur.execute("""
+                SELECT DISTINCT indicator
+                FROM (
+                    SELECT indicator FROM smatbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                    UNION
+                    SELECT indicator FROM rsitbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                    UNION
+                    SELECT indicator FROM bbtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                    UNION
+                    SELECT indicator_set as indicator FROM macdtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                    UNION
+                    SELECT indicator FROM stochtbl WHERE symbol = %s AND signal = 'BUY' {date_filter}
+                ) AS all_indicators
+                ORDER BY indicator
+            """.format(date_filter=date_filter), params * 5)
+            
+            all_indicators = [row[0] for row in cur.fetchall()]
+            
+            # Debug: Log first few companies with any signals
+            if processed_count <= 5 and total_signals > 0:
+                print(f"[TRADING SCAN] {symbol}: {total_signals} total, {profit_signals} profit, {loss_signals} loss, {no_action_signals} no-action, {success_rate:.1f}% success, avg {avg_profit_loss:.2f}%, indicators: {len(all_indicators)}")
+            
+            # Add all companies with signals
+            results.append({
+                'symbol': symbol,
+                'total_signals': total_signals,
+                'profit_signals': profit_signals,
+                'loss_signals': loss_signals,
+                'no_action_signals': no_action_signals,
+                'success_rate': success_rate,
+                'net_profit_loss': avg_profit_loss,
+                'indicators': all_indicators  # ALL indicators, not just filtered
+            })
+        
+        # Sort by profit signals (descending)
+        results.sort(key=lambda x: x['profit_signals'], reverse=True)
+        
+        print(f"[TRADING SCAN] Found {len(results)} companies matching criteria")
+        
+        response = {
+            'results': results,
+            'total_companies': len(results),
+            'criteria': {
+                'target': target,
+                'stop_loss': stop_loss,
+                'holding_days': holding_days,
+                'from_date': from_date,
+                'to_date': to_date,
+                'indicator': indicator
+            },
+            'cached': False
+        }
+        
+        # Store in database cache (upsert)
+        import json
+        cur.execute("""
+            INSERT INTO scanner_cache (cache_key, target, stop_loss, from_date, to_date, holding_days, indicator, results, total_companies)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (cache_key) 
+            DO UPDATE SET 
+                results = EXCLUDED.results,
+                total_companies = EXCLUDED.total_companies,
+                cached_at = CURRENT_TIMESTAMP
+        """, (cache_key, target, stop_loss, from_date, to_date, holding_days, indicator, json.dumps(results), len(results)))
+        conn.commit()
+        print(f"[TRADING SCAN] 💾 Results cached in database")
+        
+        return response
+        
+    except Exception as e:
+        print(f"[TRADING SCAN] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+    finally:
+        cur.close()
+        return_db(conn)
+
+
+# =========================================================
+# CLEAR SCANNER CACHE
+# =========================================================
+@app.post("/api/clear-scanner-cache")
+def clear_scanner_cache():
+    """Clear the scanner cache from database"""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        
+        # Get count before clearing
+        cur.execute("SELECT COUNT(*) FROM scanner_cache")
+        cache_size = cur.fetchone()[0]
+        
+        # Clear all cache entries
+        cur.execute("DELETE FROM scanner_cache")
+        conn.commit()
+        
+        print(f"[CACHE] Cleared {cache_size} cached scan results from database")
+        
+        cur.close()
+        return_db(conn)
+        
+        return {
+            "success": True,
+            "message": f"Cache cleared successfully ({cache_size} entries removed)"
+        }
+    except Exception as e:
+        print(f"[CACHE] Error clearing cache: {e}")
+        return {
+            "success": False,
+            "message": f"Error clearing cache: {str(e)}"
+        }
+        return {"message": f"Cleared {cache_size} cached results", "success": True}
 
 
 # =========================================================

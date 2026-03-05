@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+
+{% block title %}Advanced Stock Scanner - NSE Stock Analysis{% endblock %}
+
+{% block content %}
+<div class="scanner-page">
+    <div class="scanner-header">
+        <h1>🔍 Historical Trading Performance Scanner</h1>
+        <p class="scanner-description">Analyze past BUY signals: If you bought on signal date and sold when target/stop-loss hit, what was your average profit/loss?</p>
+    </div>
+
+    <div class="scanner-controls">
+        <div class="scanner-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="scannerTarget">TARGET PROFIT %:</label>
+                    <input type="number" id="scannerTarget" class="scanner-input" value="5" min="0.5" max="50" step="0.5">
+                    <span class="input-hint">Sell when price goes UP by this %</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="scannerStopLoss">STOP LOSS %:</label>
+                    <input type="number" id="scannerStopLoss" class="scanner-input" value="3" min="0.5" max="50" step="0.5">
+                    <span class="input-hint">Sell when price goes DOWN by this %</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="holdingDays">HOLDING PERIOD (DAYS):</label>
+                    <input type="number" id="holdingDays" class="scanner-input" value="30" min="1" max="365">
+                    <span class="input-hint">Max days to wait for target/stop-loss</span>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="scannerFromDate">FROM DATE:</label>
+                    <input type="date" id="scannerFromDate" class="scanner-input">
+                    <span class="input-hint">Start date (e.g., 1 year ago)</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="scannerToDate">TO DATE:</label>
+                    <input type="date" id="scannerToDate" class="scanner-input">
+                    <span class="input-hint">End date (e.g., today)</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="indicatorFilter">FILTER BY INDICATOR:</label>
+                    <select id="indicatorFilter" class="scanner-input">
+                        <option value="ALL">All Indicators</option>
+                        <optgroup label="SMA (Simple Moving Average)">
+                            <option value="SMA5">SMA5</option>
+                            <option value="SMA10">SMA10</option>
+                            <option value="SMA20">SMA20</option>
+                            <option value="SMA50">SMA50</option>
+                            <option value="SMA100">SMA100</option>
+                            <option value="SMA200">SMA200</option>
+                        </optgroup>
+                        <optgroup label="RSI (Relative Strength Index)">
+                            <option value="RSI7">RSI7</option>
+                            <option value="RSI14">RSI14</option>
+                            <option value="RSI21">RSI21</option>
+                            <option value="RSI50">RSI50</option>
+                            <option value="RSI80">RSI80</option>
+                        </optgroup>
+                        <optgroup label="Bollinger Bands">
+                            <option value="BB10_Lower">BB10 Lower</option>
+                            <option value="BB20_Lower">BB20 Lower</option>
+                            <option value="BB50_Lower">BB50 Lower</option>
+                            <option value="BB100_Lower">BB100 Lower</option>
+                        </optgroup>
+                        <optgroup label="MACD">
+                            <option value="Short">MACD Short</option>
+                            <option value="Long">MACD Long</option>
+                            <option value="Standard">MACD Standard</option>
+                        </optgroup>
+                        <optgroup label="Stochastic">
+                            <option value="STOCH5">STOCH5</option>
+                            <option value="STOCH9">STOCH9</option>
+                            <option value="STOCH14">STOCH14</option>
+                            <option value="STOCH21">STOCH21</option>
+                            <option value="STOCH50">STOCH50</option>
+                        </optgroup>
+                    </select>
+                    <span class="input-hint">Auto-scans when changed</span>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button id="scanBtn" class="btn btn-primary btn-large">
+                    🔍 SCAN NOW
+                </button>
+                <button id="resetBtn" class="btn btn-secondary">
+                    🔄 Reset
+                </button>
+                <button id="clearCacheBtn" class="btn btn-secondary">
+                    🗑️ Clear Cache
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scannerLoading" class="scanner-loading" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>Scanning stocks... This may take a moment.</p>
+        <p class="loading-progress" id="scanProgress">Analyzing companies...</p>
+    </div>
+
+    <div id="scannerResults" class="scanner-results" style="display: none;">
+        <div class="results-header">
+            <h2>📊 Scan Results <span id="cacheIndicator" style="display: none; font-size: 0.8rem; color: #10b981; margin-left: 0.5rem;">💾 Cached</span></h2>
+            <div class="results-summary">
+                <span class="summary-item">
+                    <strong id="totalCompanies">0</strong> companies found
+                </span>
+                <span class="summary-item">
+                    <strong id="totalProfitSignals">0</strong> total profit signals
+                </span>
+            </div>
+        </div>
+        
+        <div class="results-filters">
+            <div class="filter-group">
+                <label>Sort by:</label>
+                <select id="sortBy" class="filter-select">
+                    <option value="signals">Most Profit Signals</option>
+                    <option value="success">Highest Success Rate</option>
+                    <option value="netProfit">Highest Net Profit</option>
+                    <option value="symbol">Company Name</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="results-table-container">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>NO.</th>
+                        <th>COMPANY (Profit Signals)</th>
+                        <th>INDICATORS</th>
+                        <th>TOTAL SIGNALS</th>
+                        <th>PROFIT SIGNALS</th>
+                        <th>LOSS SIGNALS</th>
+                        <th>NO ACTION</th>
+                        <th>SUCCESS RATE</th>
+                        <th>AVG PROFIT/LOSS PER TRADE</th>
+                        <th>ACTION</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsTableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Day Trading Scanner JavaScript
+const scannerAPI = {
+    scan: (params) => `/api/day-trading-scan?target=${params.target}&stop_loss=${params.stopLoss}&from_date=${params.fromDate}&to_date=${params.toDate}&holding_days=${params.holdingDays}&indicator=${params.indicator}`
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    const scanBtn = document.getElementById('scanBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const clearCacheBtn = document.getElementById('clearCacheBtn');
+    const indicatorFilter = document.getElementById('indicatorFilter');
+    
+    // Set default dates (1 year ago to today)
+    const today = new Date();
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(today.getFullYear() - 1);
+    
+    document.getElementById('scannerToDate').valueAsDate = today;
+    document.getElementById('scannerFromDate').valueAsDate = oneYearAgo;
+    
+    if (scanBtn) {
+        scanBtn.addEventListener('click', performScan);
+    }
+    
+    if (resetBtn) {
+        resetBtn.addEventListener('click', resetForm);
+    }
+    
+    if (clearCacheBtn) {
+        clearCacheBtn.addEventListener('click', clearCache);
+    }
+    
+    // Auto-scan when indicator changes
+    if (indicatorFilter) {
+        indicatorFilter.addEventListener('change', function() {
+            console.log('🔄 [SCANNER] Indicator changed to:', this.value);
+            // Auto-scan immediately
+            performScan();
+        });
+    }
+    
+    // Sort handler
+    const sortBy = document.getElementById('sortBy');
+    if (sortBy) {
+        sortBy.addEventListener('change', applySortAndFilter);
+    }
+});
+
+let scanResults = [];
+
+async function performScan() {
+    const target = document.getElementById('scannerTarget').value;
+    const stopLoss = document.getElementById('scannerStopLoss').value;
+    const holdingDays = document.getElementById('holdingDays').value || '30';
+    const fromDate = document.getElementById('scannerFromDate').value || '';
+    const toDate = document.getElementById('scannerToDate').value || '';
+    const indicator = document.getElementById('indicatorFilter').value || 'ALL';
+    
+    if (!target || !stopLoss || !holdingDays) {
+        showNotification('Please fill all required fields', 'warning');
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('scannerLoading').style.display = 'block';
+    document.getElementById('scannerResults').style.display = 'none';
+    
+    try {
+        const url = scannerAPI.scan({ target, stopLoss, holdingDays, fromDate, toDate, indicator });
+        console.log('🔍 [SCANNER] Fetching:', url);
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.error) {
+            showNotification('Scan failed: ' + data.error, 'error');
+            return;
+        }
+        
+        scanResults = data.results || [];
+        displayResults(scanResults, data.cached);
+        
+        // Show cache status
+        if (data.cached) {
+            showNotification(`Found ${scanResults.length} companies (from cache - ${data.cached_at})`, 'success');
+        } else {
+            showNotification(`Found ${scanResults.length} companies with profitable signals`, 'success');
+        }
+        
+    } catch (error) {
+        console.error('❌ [SCANNER] Error:', error);
+        showNotification('Scan failed: ' + error.message, 'error');
+    } finally {
+        document.getElementById('scannerLoading').style.display = 'none';
+    }
+}
+
+function displayResults(results, isCached = false) {
+    document.getElementById('scannerResults').style.display = 'block';
+    document.getElementById('totalCompanies').textContent = results.length;
+    
+    // Show/hide cache indicator
+    const cacheIndicator = document.getElementById('cacheIndicator');
+    if (isCached) {
+        cacheIndicator.style.display = 'inline';
+    } else {
+        cacheIndicator.style.display = 'none';
+    }
+    
+    const totalProfitSignals = results.reduce((sum, r) => sum + r.profit_signals, 0);
+    document.getElementById('totalProfitSignals').textContent = totalProfitSignals;
+    
+    const tbody = document.getElementById('resultsTableBody');
+    tbody.innerHTML = '';
+    
+    if (results.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 2rem;">No companies found. Try adjusting the parameters or date range.</td></tr>';
+        return;
+    }
+    
+    results.forEach((result, index) => {
+        const row = document.createElement('tr');
+        
+        const successRate = result.success_rate || 0;
+        const netProfit = result.net_profit_loss || 0;
+        
+        const successClass = successRate >= 70 ? 'success-high' : successRate >= 50 ? 'success-medium' : 'success-low';
+        const profitClass = netProfit >= 0 ? 'profit' : 'loss';
+        
+        // Format indicators
+        const indicators = result.indicators || [];
+        const indicatorCount = indicators.length;
+        let indicatorDisplay = '';
+        
+        if (indicatorCount === 0) {
+            indicatorDisplay = '-';
+        } else if (indicatorCount === 1) {
+            indicatorDisplay = `<span class="indicator-tag">${indicators[0]}</span>`;
+        } else {
+            indicatorDisplay = `<span class="indicator-count">${indicatorCount} indicators</span>`;
+            indicatorDisplay += `<div class="indicator-list">${indicators.map(ind => `<span class="indicator-tag">${ind}</span>`).join(', ')}</div>`;
+        }
+        
+        row.innerHTML = `
+            <td>${index + 1}</td>
+            <td class="company-cell">
+                <strong>${result.symbol}</strong>
+                <span class="signal-count">(${result.profit_signals})</span>
+            </td>
+            <td class="center">${indicatorDisplay}</td>
+            <td class="center">${result.total_signals}</td>
+            <td class="center profit">${result.profit_signals}</td>
+            <td class="center loss">${result.loss_signals}</td>
+            <td class="center">${result.no_action_signals || 0}</td>
+            <td class="center"><span class="badge ${successClass}">${successRate.toFixed(1)}%</span></td>
+            <td class="center ${profitClass}"><strong>${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)}%</strong></td>
+            <td class="center">
+                <a href="/symbol/${result.symbol}" class="btn-view" target="_blank">VIEW</a>
+            </td>
+        `;
+        
+        tbody.appendChild(row);
+    });
+}
+
+function applySortAndFilter() {
+    let filtered = [...scanResults];
+    
+    // Apply sort
+    const sortBy = document.getElementById('sortBy').value;
+    filtered.sort((a, b) => {
+        switch(sortBy) {
+            case 'signals':
+                return b.profit_signals - a.profit_signals;
+            case 'success':
+                return (b.success_rate || 0) - (a.success_rate || 0);
+            case 'netProfit':
+                return (b.net_profit_loss || 0) - (a.net_profit_loss || 0);
+            case 'symbol':
+                return a.symbol.localeCompare(b.symbol);
+            default:
+                return 0;
+        }
+    });
+    
+    displayResults(filtered);
+}
+
+function resetForm() {
+    document.getElementById('scannerTarget').value = '5';
+    document.getElementById('scannerStopLoss').value = '3';
+    document.getElementById('holdingDays').value = '30';
+    document.getElementById('indicatorFilter').value = 'ALL';
+    
+    const today = new Date();
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(today.getFullYear() - 1);
+    
+    document.getElementById('scannerToDate').valueAsDate = today;
+    document.getElementById('scannerFromDate').valueAsDate = oneYearAgo;
+    
+    document.getElementById('scannerResults').style.display = 'none';
+    scanResults = [];
+}
+
+async function clearCache() {
+    try {
+        const response = await fetch('/api/clear-scanner-cache', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+        } else {
+            showNotification('Failed to clear cache', 'error');
+        }
+    } catch (error) {
+        console.error('❌ [CACHE] Error:', error);
+        showNotification('Failed to clear cache: ' + error.message, 'error');
+    }
+}
+
+</script>
+{% endblock %}

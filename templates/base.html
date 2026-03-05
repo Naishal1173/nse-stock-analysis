@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}NSE Stock Analysis{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css?v=3.7">
+    <link rel="stylesheet" href="/static/style.css?v=4.7">
     <link rel="stylesheet" href="/static/dashboard-new.css?v=4.5">
     <script src="/static/lightweight-charts.js"></script>
     {% block extra_head %}{% endblock %}
@@ -28,9 +28,13 @@
             
             <!-- PDF Report Button -->
             <div class="nav-report-wrapper">
+                <button id="advancedScannerBtn" class="nav-scanner-btn" title="Advanced Stock Scanner">
+                    🔍 Advanced Scanner
+                </button>
                 <button id="generateReportBtn" class="nav-report-btn" title="Export last 30 days data as PDF">
                     📄 Export PDF
                 </button>
+                
             </div>
         </div>
     </nav>
