@@ -6,7 +6,7 @@
 <div class="scanner-page">
     <div class="scanner-header">
         <h1>🔍 Historical Trading Performance Scanner</h1>
-        <p class="scanner-description">Analyze past BUY signals: If you bought on signal date and sold when target/stop-loss hit, what was your average profit/loss?</p>
+        <p class="scanner-description">Shows companies with BUY signals TODAY and analyzes their historical performance: If you bought on past signal dates and sold when target/stop-loss hit, what was your average profit/loss?</p>
     </div>
 
     <div class="scanner-controls">
@@ -108,7 +108,9 @@
 
     <div id="scannerResults" class="scanner-results" style="display: none;">
         <div class="results-header">
-            <h2>📊 Scan Results <span id="cacheIndicator" style="display: none; font-size: 0.8rem; color: #10b981; margin-left: 0.5rem;">💾 Cached</span></h2>
+            <h2>📊 Scan Results 
+                <span id="cacheIndicator" style="display: none; font-size: 0.8rem; color: #10b981; margin-left: 0.5rem;" title="Cache status"></span>
+            </h2>
             <div class="results-summary">
                 <span class="summary-item">
                     <strong id="totalCompanies">0</strong> companies found
@@ -120,262 +122,88 @@
         </div>
         
         <div class="results-filters">
+            <div class="results-search-box" style="flex: 1; max-width: 400px;">
+                <input type="text" id="scannerSearch" class="results-search-input" 
+                       placeholder="🔍 Search companies or indicators..." autocomplete="off">
+                <button id="clearScannerSearch" class="clear-search-btn" style="display: none;">✕</button>
+            </div>
+            
             <div class="filter-group">
-                <label>Sort by:</label>
-                <select id="sortBy" class="filter-select">
-                    <option value="signals">Most Profit Signals</option>
-                    <option value="success">Highest Success Rate</option>
-                    <option value="netProfit">Highest Net Profit</option>
-                    <option value="symbol">Company Name</option>
-                </select>
+                <label>
+                    <input type="checkbox" id="groupByCompany" class="group-toggle-checkbox">
+                    <span class="group-toggle-label">Group by Company</span>
+                </label>
             </div>
         </div>
         
         <div class="results-table-container">
+            <div class="pagination-controls" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                <div id="paginationInfo" style="color: #666;"></div>
+                <div id="paginationButtons"></div>
+            </div>
+            
             <table class="results-table">
                 <thead>
                     <tr>
                         <th>NO.</th>
-                        <th>COMPANY (Profit Signals)</th>
+                        <th>COMPANY</th>
                         <th>INDICATORS</th>
-                        <th>TOTAL SIGNALS</th>
-                        <th>PROFIT SIGNALS</th>
-                        <th>LOSS SIGNALS</th>
-                        <th>NO ACTION</th>
-                        <th>SUCCESS RATE</th>
-                        <th>AVG PROFIT/LOSS PER TRADE</th>
+                        <th>TOTAL</th>
+                        <th>PROFIT</th>
+                        <th>LOSS</th>
+                        <th>OPEN</th>
+                        <th>SUCCESS %</th>
+                        <th>AVG P/L</th>
                         <th>ACTION</th>
                     </tr>
                 </thead>
                 <tbody id="resultsTableBody">
                 </tbody>
             </table>
+            
+            <div id="paginationBottomButtons" style="margin-top: 1rem; text-align: center;"></div>
         </div>
     </div>
 </div>
 
-<script>
-// Day Trading Scanner JavaScript
-const scannerAPI = {
-    scan: (params) => `/api/day-trading-scan?target=${params.target}&stop_loss=${params.stopLoss}&from_date=${params.fromDate}&to_date=${params.toDate}&holding_days=${params.holdingDays}&indicator=${params.indicator}`
-};
+<!-- Load fast scanner script -->
+<script src="/static/scanner-fast.js?v=4.1"></script>
 
-document.addEventListener('DOMContentLoaded', function() {
-    const scanBtn = document.getElementById('scanBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    const clearCacheBtn = document.getElementById('clearCacheBtn');
-    const indicatorFilter = document.getElementById('indicatorFilter');
-    
-    // Set default dates (1 year ago to today)
-    const today = new Date();
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(today.getFullYear() - 1);
-    
-    document.getElementById('scannerToDate').valueAsDate = today;
-    document.getElementById('scannerFromDate').valueAsDate = oneYearAgo;
-    
-    if (scanBtn) {
-        scanBtn.addEventListener('click', performScan);
-    }
-    
-    if (resetBtn) {
-        resetBtn.addEventListener('click', resetForm);
-    }
-    
-    if (clearCacheBtn) {
-        clearCacheBtn.addEventListener('click', clearCache);
-    }
-    
-    // Auto-scan when indicator changes
-    if (indicatorFilter) {
-        indicatorFilter.addEventListener('change', function() {
-            console.log('🔄 [SCANNER] Indicator changed to:', this.value);
-            // Auto-scan immediately
-            performScan();
-        });
-    }
-    
-    // Sort handler
-    const sortBy = document.getElementById('sortBy');
-    if (sortBy) {
-        sortBy.addEventListener('change', applySortAndFilter);
-    }
-});
-
-let scanResults = [];
-
-async function performScan() {
-    const target = document.getElementById('scannerTarget').value;
-    const stopLoss = document.getElementById('scannerStopLoss').value;
-    const holdingDays = document.getElementById('holdingDays').value || '30';
-    const fromDate = document.getElementById('scannerFromDate').value || '';
-    const toDate = document.getElementById('scannerToDate').value || '';
-    const indicator = document.getElementById('indicatorFilter').value || 'ALL';
-    
-    if (!target || !stopLoss || !holdingDays) {
-        showNotification('Please fill all required fields', 'warning');
-        return;
-    }
-    
-    // Show loading
-    document.getElementById('scannerLoading').style.display = 'block';
-    document.getElementById('scannerResults').style.display = 'none';
-    
-    try {
-        const url = scannerAPI.scan({ target, stopLoss, holdingDays, fromDate, toDate, indicator });
-        console.log('🔍 [SCANNER] Fetching:', url);
-        
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (data.error) {
-            showNotification('Scan failed: ' + data.error, 'error');
-            return;
-        }
-        
-        scanResults = data.results || [];
-        displayResults(scanResults, data.cached);
-        
-        // Show cache status
-        if (data.cached) {
-            showNotification(`Found ${scanResults.length} companies (from cache - ${data.cached_at})`, 'success');
-        } else {
-            showNotification(`Found ${scanResults.length} companies with profitable signals`, 'success');
-        }
-        
-    } catch (error) {
-        console.error('❌ [SCANNER] Error:', error);
-        showNotification('Scan failed: ' + error.message, 'error');
-    } finally {
-        document.getElementById('scannerLoading').style.display = 'none';
-    }
+<style>
+.indicator-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 2px;
+    background: #3b82f6;
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
 }
 
-function displayResults(results, isCached = false) {
-    document.getElementById('scannerResults').style.display = 'block';
-    document.getElementById('totalCompanies').textContent = results.length;
-    
-    // Show/hide cache indicator
-    const cacheIndicator = document.getElementById('cacheIndicator');
-    if (isCached) {
-        cacheIndicator.style.display = 'inline';
-    } else {
-        cacheIndicator.style.display = 'none';
-    }
-    
-    const totalProfitSignals = results.reduce((sum, r) => sum + r.profit_signals, 0);
-    document.getElementById('totalProfitSignals').textContent = totalProfitSignals;
-    
-    const tbody = document.getElementById('resultsTableBody');
-    tbody.innerHTML = '';
-    
-    if (results.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 2rem;">No companies found. Try adjusting the parameters or date range.</td></tr>';
-        return;
-    }
-    
-    results.forEach((result, index) => {
-        const row = document.createElement('tr');
-        
-        const successRate = result.success_rate || 0;
-        const netProfit = result.net_profit_loss || 0;
-        
-        const successClass = successRate >= 70 ? 'success-high' : successRate >= 50 ? 'success-medium' : 'success-low';
-        const profitClass = netProfit >= 0 ? 'profit' : 'loss';
-        
-        // Format indicators
-        const indicators = result.indicators || [];
-        const indicatorCount = indicators.length;
-        let indicatorDisplay = '';
-        
-        if (indicatorCount === 0) {
-            indicatorDisplay = '-';
-        } else if (indicatorCount === 1) {
-            indicatorDisplay = `<span class="indicator-tag">${indicators[0]}</span>`;
-        } else {
-            indicatorDisplay = `<span class="indicator-count">${indicatorCount} indicators</span>`;
-            indicatorDisplay += `<div class="indicator-list">${indicators.map(ind => `<span class="indicator-tag">${ind}</span>`).join(', ')}</div>`;
-        }
-        
-        row.innerHTML = `
-            <td>${index + 1}</td>
-            <td class="company-cell">
-                <strong>${result.symbol}</strong>
-                <span class="signal-count">(${result.profit_signals})</span>
-            </td>
-            <td class="center">${indicatorDisplay}</td>
-            <td class="center">${result.total_signals}</td>
-            <td class="center profit">${result.profit_signals}</td>
-            <td class="center loss">${result.loss_signals}</td>
-            <td class="center">${result.no_action_signals || 0}</td>
-            <td class="center"><span class="badge ${successClass}">${successRate.toFixed(1)}%</span></td>
-            <td class="center ${profitClass}"><strong>${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)}%</strong></td>
-            <td class="center">
-                <a href="/symbol/${result.symbol}" class="btn-view" target="_blank">VIEW</a>
-            </td>
-        `;
-        
-        tbody.appendChild(row);
-    });
+.results-search-box {
+    position: relative;
 }
 
-function applySortAndFilter() {
-    let filtered = [...scanResults];
-    
-    // Apply sort
-    const sortBy = document.getElementById('sortBy').value;
-    filtered.sort((a, b) => {
-        switch(sortBy) {
-            case 'signals':
-                return b.profit_signals - a.profit_signals;
-            case 'success':
-                return (b.success_rate || 0) - (a.success_rate || 0);
-            case 'netProfit':
-                return (b.net_profit_loss || 0) - (a.net_profit_loss || 0);
-            case 'symbol':
-                return a.symbol.localeCompare(b.symbol);
-            default:
-                return 0;
-        }
-    });
-    
-    displayResults(filtered);
+.clear-search-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    display: none;
 }
 
-function resetForm() {
-    document.getElementById('scannerTarget').value = '5';
-    document.getElementById('scannerStopLoss').value = '3';
-    document.getElementById('holdingDays').value = '30';
-    document.getElementById('indicatorFilter').value = 'ALL';
-    
-    const today = new Date();
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(today.getFullYear() - 1);
-    
-    document.getElementById('scannerToDate').valueAsDate = today;
-    document.getElementById('scannerFromDate').valueAsDate = oneYearAgo;
-    
-    document.getElementById('scannerResults').style.display = 'none';
-    scanResults = [];
+.clear-search-btn:hover {
+    background: #dc2626;
 }
-
-async function clearCache() {
-    try {
-        const response = await fetch('/api/clear-scanner-cache', {
-            method: 'POST'
-        });
-        const data = await response.json();
-        
-        if (data.success) {
-            showNotification(data.message, 'success');
-        } else {
-            showNotification('Failed to clear cache', 'error');
-        }
-    } catch (error) {
-        console.error('❌ [CACHE] Error:', error);
-        showNotification('Failed to clear cache: ' + error.message, 'error');
-    }
-}
-
-</script>
+</style>
 {% endblock %}

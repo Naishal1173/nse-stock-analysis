@@ -35,7 +35,7 @@ async function analyzeDashboardFast() {
         const startTime = performance.now();
 
         // Build URL with optional indicator filter
-        let firstUrl = `/api/analyze-progressive?target=${target}&days=${days}&batch_size=50&offset=0`;
+        let url = `/api/analyze-progressive?target=${target}&days=${days}`;
         
         // Add indicator filter if indicators are selected
         if (selectedIndicators.length > 0) {
@@ -44,86 +44,53 @@ async function analyzeDashboardFast() {
                 if (ind.startsWith('MACD_')) return ind.replace('MACD_', '');
                 return ind;
             }).join(',');
-            firstUrl += `&indicators=${encodeURIComponent(indicators)}`;
+            url += `&indicators=${encodeURIComponent(indicators)}`;
             console.log('📊 [DASHBOARD] Fetching with indicator filter:', indicators);
         }
 
-        // STEP 1: Get first 50 results (backend analyzes ALL, returns first 50)
-        console.log('📊 [DASHBOARD] Loading first 50 results...');
-        const firstResponse = await fetch(firstUrl);
-        const firstData = await firstResponse.json();
+        // Load ALL results in ONE request
+        console.log('📊 [DASHBOARD] Loading all results...');
+        const response = await fetch(url);
+        const data = await response.json();
 
-        if (firstData.error) {
-            showError('Analysis failed: ' + firstData.error);
+        if (data.error) {
+            showError('Analysis failed: ' + data.error);
             document.getElementById('loadingState').classList.add('hidden');
             return;
         }
 
-        allResults = firstData.results || [];
-        const totalSignals = firstData.total_signals;
+        allResults = data.results || [];
 
         // Show cache status
-        if (firstData.cached) {
-            console.log(`✅ [DASHBOARD] First ${allResults.length} results loaded from cache in ${firstData.processing_time_seconds}s (⚡ cache age: ${firstData.cache_age_seconds}s)`);
+        if (data.cached) {
+            console.log(`✅ [DASHBOARD] Loaded ${allResults.length} results from cache in ${data.processing_time_seconds}s (⚡ cache age: ${data.cache_age_seconds}s)`);
         } else {
-            console.log(`✅ [DASHBOARD] First ${allResults.length} results loaded in ${firstData.processing_time_seconds}s`);
+            console.log(`✅ [DASHBOARD] Loaded ${allResults.length} results in ${data.processing_time_seconds}s`);
         }
         
-        // Show first 50 immediately
+        // Hide loading, show results
         document.getElementById('loadingState').classList.add('hidden');
         document.getElementById('resultsSection').classList.remove('hidden');
         
+        // Apply sorting to all results
         let filteredResults = applySmartSorting(allResults);
+        allResults = filteredResults;
         
-        displayResultsWithProgress(filteredResults, target, days, {
-            isPartial: true,
-            loaded: allResults.length,
-            total: totalSignals
-        });
-
-        // STEP 2: Load ALL remaining results in ONE request (from cache, instant)
-        if (firstData.has_more) {
-            console.log(`📊 [DASHBOARD] Loading remaining ${totalSignals - 50} results...`);
-            
-            // Request ALL remaining results at once (batch_size = total - 50)
-            const remainingSize = totalSignals - 50;
-            let remainingUrl = `/api/analyze-progressive?target=${target}&days=${days}&batch_size=${remainingSize}&offset=50`;
-            
-            // Add indicator filter to remaining request too
-            if (selectedIndicators.length > 0) {
-                const indicators = selectedIndicators.map(ind => {
-                    if (ind.startsWith('MACD_')) return ind.replace('MACD_', '');
-                    return ind;
-                }).join(',');
-                remainingUrl += `&indicators=${encodeURIComponent(indicators)}`;
-            }
-            
-            const remainingResponse = await fetch(remainingUrl);
-            const remainingData = await remainingResponse.json();
-
-            if (!remainingData.error && remainingData.results) {
-                allResults = allResults.concat(remainingData.results);
-                console.log(`✅ [DASHBOARD] All ${allResults.length} results loaded!`);
-                
-                // Apply sorting to all results
-                filteredResults = applySmartSorting(allResults);
-                allResults = filteredResults;
-                
-                // Store ungrouped results for fast toggling
-                ungroupedResults = [...allResults];
-                
-                // Load prices FIRST, then apply filters
-                await loadLatestPrices();
-                
-                // Enable price filter after first successful analysis
-                enablePriceFilter();
-                
-                // ALWAYS apply all filters (including price filter if selected)
-                // This ensures allResults is properly filtered
-                console.log(`📊 [DASHBOARD] Applying all filters...`);
-                applyAllFilters();
-            }
-        }
+        // Store ungrouped results for fast toggling
+        ungroupedResults = [...allResults];
+        
+        // Display results
+        displayResults(allResults, target, days);
+        
+        // Load prices FIRST, then apply filters
+        await loadLatestPrices();
+        
+        // Enable price filter after first successful analysis
+        enablePriceFilter();
+        
+        // ALWAYS apply all filters (including price filter if selected)
+        console.log(`📊 [DASHBOARD] Applying all filters...`);
+        applyAllFilters();
 
         const endTime = performance.now();
         const totalTime = ((endTime - startTime) / 1000).toFixed(2);
@@ -656,63 +623,13 @@ function filterBySelectedIndicators() {
         return;
     }
 
-    let filteredResults;
+    console.log(`[INDICATOR] Filtering by ${selectedIndicators.length} selected indicators`);
     
-    // Check if we're in grouped mode
-    const groupCheckbox = document.getElementById('groupByCompany');
-    const isGrouped = groupCheckbox && groupCheckbox.checked;
-    
-    // Determine which data source to use
-    const sourceData = isGrouped ? ungroupedResults : allResults;
-    
-    if (!sourceData || sourceData.length === 0) {
-        console.log('[INDICATOR] No source data to filter');
-        return;
-    }
-    
-    // If no indicators selected, show all
-    if (selectedIndicators.length === 0) {
-        filteredResults = [...sourceData];
-        showNotification(`Showing all ${filteredResults.length} signals`, 'success');
-    } else {
-        // Filter to only selected indicators
-        filteredResults = sourceData.filter(result => {
-            let resultIndicator = result.indicator;
-            
-            // Handle MACD naming
-            if (resultIndicator === 'Short' || resultIndicator === 'Long' || resultIndicator === 'Standard') {
-                resultIndicator = `MACD_${resultIndicator}`;
-            }
-            
-            return selectedIndicators.includes(resultIndicator);
-        });
-        
-        showNotification(`Filtered to ${filteredResults.length} signal(s) from ${selectedIndicators.length} indicator(s)`, 'success');
-    }
-
-    // Apply smart sorting to filtered results
-    filteredResults = applySmartSorting(filteredResults);
-
-    // Re-render with filtered and sorted data based on view mode
-    dashboardCurrentPage = 1; // Reset to page 1
-    
-    if (isGrouped) {
-        // Group the filtered results and display
-        const groupedResults = groupResultsByCompany(filteredResults);
-        allResults = groupedResults; // Update allResults with grouped data
-        const target = document.getElementById('dashboardTarget').value;
-        const days = document.getElementById('dashboardDays').value;
-        displayGroupedResults(groupedResults, target, days, filteredResults.length);
-    } else {
-        // Display ungrouped results
-        allResults = filteredResults; // Update allResults
-        displayResults(filteredResults, null, null);
-    }
+    // Use applyAllFilters to ensure all filters work together
+    applyAllFilters();
 }
 
 // Smart search - searches ALL results across all pages
-let searchFilteredResults = [];
-let isSearchActive = false;
 let currentMinSignals = 1; // Track current filter setting
 
 let searchSetupDone = false;
@@ -747,97 +664,22 @@ function setupResultsSearch() {
             }
         }
         
-        if (!searchTerm) {
-            // No search term - apply min signals filter if active
-            isSearchActive = false;
-            searchFilteredResults = [];
-            dashboardCurrentPage = 1;
-            
-            // Check if we're in grouped mode
-            const isGrouped = allResults.length > 0 && allResults[0].indicators !== undefined;
-            
-            // Apply min signals filter (only for ungrouped mode)
-            let filteredResults = [...allResults];
-            if (currentMinSignals > 1 && !isGrouped) {
-                filteredResults = applyMinSignalsFilter(filteredResults, currentMinSignals);
-            }
-            
-            // Use appropriate display function based on mode
-            if (isGrouped) {
-                const target = document.getElementById('dashboardTarget').value;
-                const days = document.getElementById('dashboardDays').value;
-                // Pass original ungrouped count for grouped view
-                displayGroupedResults(filteredResults, target, days, ungroupedResults ? ungroupedResults.length : filteredResults.length);
-            } else {
-                displayResults(filteredResults, null, null);
-            }
-            return;
-        }
+        console.log(`[SEARCH] Search term: "${searchTerm}"`);
         
-        // Search across ALL results (not just current page)
-        isSearchActive = true;
-        
-        // First apply min signals filter, then search
-        let baseResults = [...allResults];
-        if (currentMinSignals > 1) {
-            baseResults = applyMinSignalsFilter(baseResults, currentMinSignals);
-        }
-        
-        searchFilteredResults = baseResults.filter(result => {
-            const symbol = result.symbol.toLowerCase();
-            
-            // Handle both grouped and ungrouped results
-            let indicator = '';
-            if (result.indicator) {
-                // Ungrouped result - single indicator
-                indicator = result.indicator.toLowerCase();
-                // Handle MACD naming
-                if (indicator === 'short' || indicator === 'long' || indicator === 'standard') {
-                    indicator = `macd_${indicator}`;
-                }
-            } else if (result.indicators) {
-                // Grouped result - multiple indicators as string
-                indicator = result.indicators.toLowerCase();
-            }
-            
-            return symbol.includes(searchTerm) || indicator.includes(searchTerm);
-        });
-        
-        // Reset to page 1 and display filtered results
-        dashboardCurrentPage = 1;
-        displaySearchResults(searchFilteredResults, searchTerm);
+        // Use applyAllFilters which will handle search as part of the filter chain
+        applyAllFilters();
     });
     
     if (clearBtn) {
         clearBtn.addEventListener('click', function() {
             searchInput.value = '';
-            isSearchActive = false;
-            searchFilteredResults = [];
-            dashboardCurrentPage = 1;
-            
-            // Hide clear button
             clearBtn.classList.remove('visible');
-            
-            // Check if we're in grouped mode
-            const isGrouped = allResults.length > 0 && allResults[0].indicators !== undefined;
-            
-            // Apply min signals filter when clearing search
-            let filteredResults = [...allResults];
-            if (currentMinSignals > 1 && !isGrouped) {
-                filteredResults = applyMinSignalsFilter(filteredResults, currentMinSignals);
-            }
-            
-            // Use appropriate display function
-            if (isGrouped) {
-                const target = document.getElementById('dashboardTarget').value;
-                const days = document.getElementById('dashboardDays').value;
-                // Pass original ungrouped count for grouped view
-                displayGroupedResults(filteredResults, target, days, ungroupedResults ? ungroupedResults.length : filteredResults.length);
-            } else {
-                displayResults(filteredResults, null, null);
-            }
-            
             searchInput.focus();
+            
+            console.log('[SEARCH] Search cleared');
+            
+            // Re-apply all filters without search
+            applyAllFilters();
         });
     }
 }
@@ -1041,17 +883,8 @@ function displaySearchResultsGrouped(results, searchTerm) {
 }
 
 function changeSearchPage(page) {
-    if (isSearchActive && searchFilteredResults.length > 0) {
-        const totalPages = Math.ceil(searchFilteredResults.length / ITEMS_PER_PAGE);
-        if (page < 1 || page > totalPages) return;
-        dashboardCurrentPage = page;
-        const searchInput = document.getElementById('resultsSearch');
-        const searchTerm = searchInput ? searchInput.value.trim() : '';
-        displaySearchResults(searchFilteredResults, searchTerm);
-        document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-        changePage(page);
-    }
+    // Just use regular changePage since search is now integrated into applyAllFilters
+    changePage(page);
 }
 
 // CLIENT-SIDE filter: Apply minimum signals filter to already-loaded results
@@ -1059,55 +892,10 @@ function applyMinSignalsFilterToResults() {
     const minSignals = parseInt(document.getElementById('minSignals').value) || 1;
     currentMinSignals = minSignals; // Track current filter
     
-    console.log(`[FILTER] Applying filter: ${minSignals}+ signals`);
-    console.log(`[FILTER] Total results in allResults: ${allResults ? allResults.length : 0}`);
+    console.log(`[MIN SIGNALS] Filter changed to: ${minSignals}+ signals`);
     
-    if (!allResults || allResults.length === 0) {
-        console.log('[FILTER] No results to filter');
-        return;
-    }
-    
-    // If search is active, re-apply search with new filter
-    const searchInput = document.getElementById('resultsSearch');
-    if (searchInput && searchInput.value.trim()) {
-        console.log('[FILTER] Search is active, re-applying search');
-        // Trigger search input event to re-filter with new min signals
-        searchInput.dispatchEvent(new Event('input'));
-        return;
-    }
-    
-    // No search active - just apply min signals filter
-    let filteredResults = [...allResults];
-    
-    console.log(`[FILTER] Before filter: ${filteredResults.length} results`);
-    
-    // Apply minimum signals filter
-    if (minSignals > 1) {
-        filteredResults = applyMinSignalsFilter(filteredResults, minSignals);
-    }
-    
-    console.log(`[FILTER] After filter: ${filteredResults.length} results`);
-    
-    // Count unique companies
-    const symbolCounts = {};
-    filteredResults.forEach(r => {
-        symbolCounts[r.symbol] = (symbolCounts[r.symbol] || 0) + 1;
-    });
-    console.log('[FILTER] Symbol counts:', symbolCounts);
-    
-    // Re-display with filter applied
-    const target = document.getElementById('dashboardTarget').value;
-    const days = document.getElementById('dashboardDays').value;
-    dashboardCurrentPage = 1; // Reset to page 1
-    displayResults(filteredResults, target, days);
-    
-    // Show notification
-    const symbolCount = Object.keys(symbolCounts).length;
-    if (minSignals > 1) {
-        showNotification(`Filtered to ${symbolCount} companies with ${minSignals}+ signals`, 'info');
-    } else {
-        showNotification(`Showing all ${symbolCount} companies`, 'info');
-    }
+    // Use applyAllFilters to ensure all filters work together
+    applyAllFilters();
 }
 
 // =========================================================
@@ -1286,14 +1074,16 @@ function setupPriceFilter() {
     }
 }
 
-// Apply all filters (indicators + price + min signals)
+// Apply all filters (indicators + price + min signals + search)
 function applyAllFilters() {
     if (!ungroupedResults || ungroupedResults.length === 0) {
         console.log('[FILTER] No data to filter');
         return;
     }
     
+    console.log('[FILTER] Starting applyAllFilters...');
     let filteredResults = [...ungroupedResults];
+    console.log(`[FILTER] Starting with ${filteredResults.length} ungrouped results`);
     
     // 1. Apply indicator filter
     if (selectedIndicators.length > 0) {
@@ -1307,19 +1097,52 @@ function applyAllFilters() {
             
             return selectedIndicators.includes(resultIndicator);
         });
+        console.log(`[FILTER] After indicator filter: ${filteredResults.length} results`);
     }
     
     // 2. Apply price filter
     const priceFilter = document.getElementById('priceFilter');
     if (priceFilter) {
         const priceRange = priceFilter.value;
-        filteredResults = applyPriceFilter(filteredResults, priceRange);
+        if (priceRange && priceRange !== 'all') {
+            filteredResults = applyPriceFilter(filteredResults, priceRange);
+            console.log(`[FILTER] After price filter (${priceRange}): ${filteredResults.length} results`);
+        }
     }
     
-    // 3. Apply smart sorting
+    // 3. Apply min signals filter (for ungrouped view only)
+    const minSignalsDropdown = document.getElementById('minSignals');
+    if (minSignalsDropdown) {
+        const minSignals = parseInt(minSignalsDropdown.value) || 1;
+        currentMinSignals = minSignals;
+        if (minSignals > 1) {
+            filteredResults = applyMinSignalsFilter(filteredResults, minSignals);
+            console.log(`[FILTER] After min signals filter (${minSignals}+): ${filteredResults.length} results`);
+        }
+    }
+    
+    // 4. Apply search filter if active
+    const searchInput = document.getElementById('resultsSearch');
+    if (searchInput && searchInput.value.trim()) {
+        const searchTerm = searchInput.value.toLowerCase().trim();
+        filteredResults = filteredResults.filter(result => {
+            const symbol = result.symbol.toLowerCase();
+            let indicator = result.indicator ? result.indicator.toLowerCase() : '';
+            
+            // Handle MACD naming
+            if (indicator === 'short' || indicator === 'long' || indicator === 'standard') {
+                indicator = `macd_${indicator}`;
+            }
+            
+            return symbol.includes(searchTerm) || indicator.includes(searchTerm);
+        });
+        console.log(`[FILTER] After search filter ("${searchTerm}"): ${filteredResults.length} results`);
+    }
+    
+    // 5. Apply smart sorting
     filteredResults = applySmartSorting(filteredResults);
     
-    // 4. Check if grouped mode
+    // 6. Check if grouped mode
     const groupCheckbox = document.getElementById('groupByCompany');
     const isGrouped = groupCheckbox && groupCheckbox.checked;
     
@@ -1343,7 +1166,10 @@ function applyAllFilters() {
     const priceRange = priceFilter ? priceFilter.value : 'all';
     const priceLabel = priceRange === 'all' ? '' : ` (${priceRange})`;
     const indicatorLabel = selectedIndicators.length > 0 ? ` (${selectedIndicators.length} indicators)` : '';
-    showNotification(`Showing ${filteredResults.length} signals${indicatorLabel}${priceLabel}`, 'success');
+    const minSignalsLabel = currentMinSignals > 1 ? ` (${currentMinSignals}+ signals)` : '';
+    const searchTerm = searchInput && searchInput.value.trim() ? ` (search: "${searchInput.value.trim()}")` : '';
+    console.log(`[FILTER] Final result: ${filteredResults.length} signals${indicatorLabel}${priceLabel}${minSignalsLabel}${searchTerm}`);
+    showNotification(`Showing ${filteredResults.length} signals${indicatorLabel}${priceLabel}${minSignalsLabel}${searchTerm}`, 'success');
 }
 
 if (document.readyState === 'loading') {
@@ -1609,8 +1435,9 @@ function groupResultsByCompany(ungroupedResults) {
     
     // Convert to array and calculate success rate
     const results = Object.values(grouped).map(data => {
-        const successRate = data.completedTrades > 0 
-            ? ((data.successful / data.completedTrades) * 100).toFixed(2)
+        // CORRECTED: Success rate based on TOTAL signals, not just completed
+        const successRate = data.totalSignals > 0 
+            ? ((data.successful / data.totalSignals) * 100).toFixed(2)
             : 0;
         
         // First indicator is the first one in the indicators array

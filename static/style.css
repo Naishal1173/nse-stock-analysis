@@ -601,7 +601,7 @@ body {
 
 /* Indicator Chart (RSI, BB, MACD, STOCH) */
 .indicator-chart {
-    height: 250px;
+    height: 303px;
     width: 100%;
     position: relative;
     background: #fafafa;
