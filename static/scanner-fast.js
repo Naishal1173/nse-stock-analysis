@@ -223,15 +223,15 @@ function renderUngroupedResults(results, tbody, startIndex) {
         const globalIndex = startIndex + index + 1;
         const row = document.createElement('tr');
         
-        // Success rate based on COMPLETED trades only (excluding open)
+        // Success rate based on TOTAL signals (including open trades)
         const profitSignals = result.profit_signals || 0;
         const lossSignals = result.loss_signals || 0;
         const completedTrades = profitSignals + lossSignals;
         const openTrades = result.open_trades || 0;
         const totalSignals = result.total_signals || 0;
         
-        // Calculate success rate from completed trades only
-        const successRate = completedTrades > 0 ? (profitSignals / completedTrades * 100) : 0;
+        // Calculate success rate from total signals (including open trades)
+        const successRate = totalSignals > 0 ? (profitSignals / totalSignals * 100) : 0;
         
         // Net P/L is the average from the backend
         const netProfit = result.net_profit_loss || 0;
@@ -253,7 +253,7 @@ function renderUngroupedResults(results, tbody, startIndex) {
             <td class="center"><span class="badge ${successClass}">${successRate.toFixed(1)}%</span></td>
             <td class="center ${profitClass}"><strong>${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)}%</strong></td>
             <td class="center">
-                <a href="/symbol/${result.symbol}?indicator=${indicatorParam}&target=${currentScanParams.target}&days=${currentScanParams.holdingDays}&from_date=${currentScanParams.fromDate}&to_date=${currentScanParams.toDate}" 
+                <a href="/scanner-detail/${encodeURIComponent(result.symbol)}?indicator=${encodeURIComponent(indicatorParam)}&target=${currentScanParams.target}&stop_loss=${currentScanParams.stopLoss}&days=${currentScanParams.holdingDays}&from_date=${currentScanParams.fromDate || ''}&to_date=${currentScanParams.toDate || ''}" 
                    class="btn-view" target="_blank">VIEW</a>
             </td>
         `;
@@ -295,7 +295,7 @@ function renderGroupedResults(groups, tbody, startIndex) {
             <td class="center"><span class="badge ${successClass}">${successRate.toFixed(1)}%</span></td>
             <td class="center ${profitClass}"><strong>${group.avg_net_profit >= 0 ? '+' : ''}${group.avg_net_profit.toFixed(2)}%</strong></td>
             <td class="center">
-                <a href="/symbol/${group.symbol}?indicator=${group.indicators[0].indicator}&target=${currentScanParams.target}&days=${currentScanParams.holdingDays}" 
+                <a href="/scanner-detail/${encodeURIComponent(group.symbol)}?indicator=${encodeURIComponent(group.indicators[0].indicator)}&target=${currentScanParams.target}&stop_loss=${currentScanParams.stopLoss}&days=${currentScanParams.holdingDays}&from_date=${currentScanParams.fromDate || ''}&to_date=${currentScanParams.toDate || ''}" 
                    class="btn-view" target="_blank">VIEW</a>
             </td>
         `;

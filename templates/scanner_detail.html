@@ -1,0 +1,709 @@
+{% extends "base.html" %}
+
+{% block title %}{{ symbol }} - Performance Analysis{% endblock %}
+
+{% block content %}
+<div class="scanner-detail-page">
+    <!-- Header -->
+    <div class="detail-header">
+        <a href="/advanced-scanner" class="back-link">← Back to Scanner</a>
+        <h1>{{ symbol }}</h1>
+        <div class="header-params">
+            <span>Target: <strong id="headerTarget">-</strong>%</span>
+            <span>Stop Loss: <strong id="headerStopLoss">-</strong>%</span>
+            <span>Days: <strong id="headerDays">-</strong></span>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>Loading performance data...</p>
+    </div>
+
+    <!-- Results Section -->
+    <div id="resultsSection" style="display: none;">
+        <!-- Summary Stats -->
+        <div class="summary-stats">
+            <div class="stat-item">
+                <span class="stat-label">Total Signals</span>
+                <span class="stat-value" id="totalSignals">-</span>
+            </div>
+            <div class="stat-item success">
+                <span class="stat-label">Hit Target</span>
+                <span class="stat-value" id="successfulTrades">-</span>
+            </div>
+            <div class="stat-item failure">
+                <span class="stat-label">Hit Stop Loss</span>
+                <span class="stat-value" id="failedTrades">-</span>
+            </div>
+            <div class="stat-item open">
+                <span class="stat-label">Open Trades</span>
+                <span class="stat-value" id="openTrades">-</span>
+            </div>
+            <div class="stat-item rate">
+                <span class="stat-label">Success Rate</span>
+                <span class="stat-value" id="successRate">-</span>
+            </div>
+            <div class="stat-item profit">
+                <span class="stat-label">Avg P/L</span>
+                <span class="stat-value" id="avgProfitLoss">-</span>
+            </div>
+        </div>
+
+        <!-- Indicator Performance Table -->
+        <div class="section">
+            <h2>📈 Performance by Indicator</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>INDICATOR</th>
+                        <th>TOTAL</th>
+                        <th>TARGET HIT</th>
+                        <th>STOP LOSS HIT</th>
+                        <th>OPEN</th>
+                        <th>SUCCESS %</th>
+                        <th>AVG P/L</th>
+                    </tr>
+                </thead>
+                <tbody id="indicatorTableBody">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Historical Trades Table -->
+        <div class="section">
+            <div class="section-header">
+                <h2>📋 Trade History with Stop Loss Analysis</h2>
+                <select id="indicatorFilter" class="filter-select">
+                    <option value="ALL">All Indicators</option>
+                </select>
+            </div>
+            <table class="data-table trades-table">
+                <thead>
+                    <tr>
+                        <th>BUY DATE</th>
+                        <th>INDICATOR</th>
+                        <th>ENTRY PRICE</th>
+                        <th>TARGET PRICE</th>
+                        <th>STOP LOSS</th>
+                        <th>HIGH REACHED</th>
+                        <th>LOW REACHED</th>
+                        <th>EXIT PRICE</th>
+                        <th>DAYS</th>
+                        <th>RESULT</th>
+                        <th>P/L %</th>
+                    </tr>
+                </thead>
+                <tbody id="tradesTableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+const urlParams = new URLSearchParams(window.location.search);
+const symbol = "{{ symbol }}";
+const indicator = urlParams.get('indicator') || 'ALL';
+const target = parseFloat(urlParams.get('target')) || 5;
+const stopLoss = parseFloat(urlParams.get('stop_loss')) || 3;
+const days = parseInt(urlParams.get('days')) || 30;
+const fromDate = urlParams.get('from_date') || '';
+const toDate = urlParams.get('to_date') || '';
+
+// DEBUG: Log all parameters
+console.log('🔍 [DETAIL PAGE] Parameters:', {
+    symbol,
+    indicator,
+    target,
+    stopLoss,
+    days,
+    fromDate,
+    toDate,
+    url: window.location.href
+});
+
+let allIndicatorData = [];
+let allTradesData = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Update header
+    document.getElementById('headerTarget').textContent = target;
+    document.getElementById('headerStopLoss').textContent = stopLoss;
+    document.getElementById('headerDays').textContent = days;
+    
+    console.log('📄 [DETAIL PAGE] DOM loaded, starting data fetch for:', symbol);
+    loadPerformanceData();
+});
+
+async function loadPerformanceData() {
+    try {
+        console.log('⏳ [LOAD] Starting loadPerformanceData for symbol:', symbol);
+        document.getElementById('loadingState').style.display = 'block';
+        document.getElementById('resultsSection').style.display = 'none';
+
+        // OPTIMIZED: Use analyze API directly for this symbol instead of scanning all symbols
+        // This is much faster as it only analyzes one symbol
+        let apiUrl = `/api/analyze?symbol=${encodeURIComponent(symbol)}&indicator=${indicator}&target=${target}&days=${days}`;
+        
+        if (fromDate) apiUrl += `&from_date=${fromDate}`;
+        if (toDate) apiUrl += `&to_date=${toDate}`;
+
+        console.log('🌐 [API] Fetching:', apiUrl);
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        
+        console.log('✅ [API] Response received:', {
+            symbol: data.symbol,
+            indicator: data.indicator,
+            totalSignals: data.totalSignals,
+            detailsCount: data.details ? data.details.length : 0
+        });
+
+        if (data.error) throw new Error(data.error);
+
+        // Convert analyze API response to match scanner format
+        // Calculate correct average P/L from trade details with stop-loss
+        const details = data.details || [];
+        let totalProfitLoss = 0;
+        let completedCount = 0;
+        
+        details.forEach(trade => {
+            if (trade.result === 'SUCCESS') {
+                // Target hit = exactly target %
+                totalProfitLoss += target;
+                completedCount++;
+            } else if (trade.result === 'FAIL') {
+                // Check if stop loss was hit
+                const buyPrice = trade.buyPrice;
+                const stopLossPrice = buyPrice * (1 - stopLoss / 100);
+                const lowReached = trade.minPriceReached || buyPrice;
+                
+                if (lowReached <= stopLossPrice) {
+                    // Stop loss hit = exactly -stop_loss %
+                    totalProfitLoss += (-stopLoss);
+                } else {
+                    // Neither hit - use max price reached
+                    const maxPrice = trade.maxPriceReached || buyPrice;
+                    const profitPct = ((maxPrice - buyPrice) / buyPrice) * 100;
+                    totalProfitLoss += profitPct;
+                }
+                completedCount++;
+            }
+            // OPEN trades are not included in average
+        });
+        
+        const calculatedAvgPL = completedCount > 0 ? totalProfitLoss / completedCount : 0;
+        
+        const symbolResults = [{
+            symbol: symbol,
+            indicator: indicator,
+            total_signals: data.totalSignals || 0,
+            profit_signals: data.successful || 0,
+            loss_signals: data.failed || 0,
+            open_trades: data.openTrades || 0,
+            success_rate: data.successRate || 0,
+            net_profit_loss: calculatedAvgPL,
+            trade_details: details  // Store details for later use
+        }];
+
+        if (symbolResults[0].total_signals === 0) {
+            showError('No data found for this symbol');
+            return;
+        }
+
+        allIndicatorData = symbolResults;
+
+        const totals = {
+            total_signals: 0,
+            profit_signals: 0,
+            loss_signals: 0,
+            open_trades: 0,
+            total_profit_loss: 0,
+            completed_trades: 0
+        };
+
+        // Recalculate totals from raw trade details (not from averages)
+        symbolResults.forEach(result => {
+            totals.total_signals += result.total_signals;
+            totals.profit_signals += result.profit_signals;
+            totals.loss_signals += result.loss_signals;
+            totals.open_trades += result.open_trades;
+            
+            // Calculate P/L from individual trades, not from average
+            if (result.trade_details) {
+                result.trade_details.forEach(trade => {
+                    if (trade.result === 'SUCCESS') {
+                        totals.total_profit_loss += target;
+                        totals.completed_trades++;
+                    } else if (trade.result === 'FAIL') {
+                        const buyPrice = trade.buyPrice;
+                        const stopLossPrice = buyPrice * (1 - stopLoss / 100);
+                        const lowReached = trade.minPriceReached || buyPrice;
+                        
+                        if (lowReached <= stopLossPrice) {
+                            totals.total_profit_loss += (-stopLoss);
+                        } else {
+                            const maxPrice = trade.maxPriceReached || buyPrice;
+                            const profitPct = ((maxPrice - buyPrice) / buyPrice) * 100;
+                            totals.total_profit_loss += profitPct;
+                        }
+                        totals.completed_trades++;
+                    }
+                });
+            }
+        });
+
+        const successRate = totals.total_signals > 0 
+            ? (totals.profit_signals / totals.total_signals * 100).toFixed(1)
+            : 0;
+        
+        const avgProfitLoss = totals.completed_trades > 0
+            ? (totals.total_profit_loss / totals.completed_trades).toFixed(2)
+            : 0;
+
+        document.getElementById('totalSignals').textContent = totals.total_signals;
+        document.getElementById('successfulTrades').textContent = totals.profit_signals;
+        document.getElementById('failedTrades').textContent = totals.loss_signals;
+        document.getElementById('openTrades').textContent = totals.open_trades;
+        document.getElementById('successRate').textContent = successRate + '%';
+        document.getElementById('avgProfitLoss').textContent = (avgProfitLoss >= 0 ? '+' : '') + avgProfitLoss + '%';
+
+        displayIndicatorPerformance(symbolResults);
+        await loadDetailedTrades();
+        populateIndicatorFilter(symbolResults);
+
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('resultsSection').style.display = 'block';
+
+    } catch (error) {
+        console.error('Error:', error);
+        showError('Failed to load: ' + error.message);
+    }
+}
+
+function displayIndicatorPerformance(results) {
+    const tbody = document.getElementById('indicatorTableBody');
+    tbody.innerHTML = '';
+
+    results.forEach(result => {
+        const completedTrades = result.profit_signals + result.loss_signals;
+        const successRate = result.total_signals > 0 
+            ? (result.profit_signals / result.total_signals * 100).toFixed(1)
+            : 0;
+
+        const successClass = successRate >= 70 ? 'success-high' : successRate >= 50 ? 'success-medium' : 'success-low';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>${result.indicator}</strong></td>
+            <td>${result.total_signals}</td>
+            <td class="success">${result.profit_signals}</td>
+            <td class="failure">${result.loss_signals}</td>
+            <td>${result.open_trades}</td>
+            <td><span class="badge ${successClass}">${successRate}%</span></td>
+            <td class="${result.net_profit_loss >= 0 ? 'profit' : 'loss'}">
+                ${result.net_profit_loss >= 0 ? '+' : ''}${result.net_profit_loss.toFixed(2)}%
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+async function loadDetailedTrades() {
+    try {
+        // Load detailed price data for each indicator
+        const promises = allIndicatorData.map(async (result) => {
+            let apiUrl = `/api/analyze?symbol=${encodeURIComponent(symbol)}&indicator=${encodeURIComponent(result.indicator)}&target=${target}&days=${days}`;
+            
+            if (fromDate) apiUrl += `&from_date=${fromDate}`;
+            if (toDate) apiUrl += `&to_date=${toDate}`;
+
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+
+            if (data.details) {
+                // Fetch actual price data to calculate high/low/stop-loss
+                return await enrichTradeDetails(data.details, result.indicator);
+            }
+            return [];
+        });
+
+        const results = await Promise.all(promises);
+        allTradesData = results.flat();
+        allTradesData.sort((a, b) => new Date(b.buyDate) - new Date(a.buyDate));
+
+        displayTrades(allTradesData);
+
+    } catch (error) {
+        console.error('Error loading trades:', error);
+    }
+}
+
+async function enrichTradeDetails(details, indicatorName) {
+    // Use actual data from API - no simulation needed
+    return details.map(detail => {
+        const buyPrice = parseFloat(detail.buyPrice);
+        const targetPrice = parseFloat(detail.targetPrice);
+        const stopLossPrice = buyPrice * (1 - stopLoss / 100);
+        
+        // Use ACTUAL high/low from database
+        const highReached = detail.maxPriceReached ? parseFloat(detail.maxPriceReached) : buyPrice;
+        const lowReached = detail.minPriceReached ? parseFloat(detail.minPriceReached) : buyPrice;
+        
+        // Determine exit price and reason
+        let exitPrice = buyPrice;
+        let exitReason = detail.result;
+        
+        if (detail.result === 'SUCCESS') {
+            // Target was hit - exit at target price
+            exitPrice = targetPrice;
+        } else if (detail.result === 'FAIL') {
+            // Check if stop-loss was hit
+            if (lowReached <= stopLossPrice) {
+                exitPrice = stopLossPrice;
+                exitReason = 'STOP_LOSS';
+            } else {
+                // Neither target nor stop-loss hit - use exit price from API
+                exitPrice = detail.exitPrice ? parseFloat(detail.exitPrice) : highReached;
+            }
+        } else if (detail.result === 'OPEN') {
+            // Trade still open - use current high as potential exit
+            exitPrice = highReached;
+        }
+        
+        const profitLoss = ((exitPrice - buyPrice) / buyPrice * 100).toFixed(2);
+        
+        return {
+            ...detail,
+            indicator: indicatorName,
+            stopLossPrice: stopLossPrice,
+            highReached: highReached,
+            lowReached: lowReached,
+            exitPrice: exitPrice,
+            exitReason: exitReason,
+            profitLoss: profitLoss
+        };
+    });
+}
+
+function displayTrades(trades) {
+    const tbody = document.getElementById('tradesTableBody');
+    tbody.innerHTML = '';
+
+    if (trades.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;">No trade data</td></tr>';
+        return;
+    }
+
+    trades.forEach(trade => {
+        const buyPrice = parseFloat(trade.buyPrice);
+        const targetPrice = parseFloat(trade.targetPrice);
+        const stopLossPrice = trade.stopLossPrice;
+        const highReached = trade.highReached;
+        const lowReached = trade.lowReached;
+        const exitPrice = trade.exitPrice;
+        const profitLoss = trade.profitLoss;
+
+        let resultClass = '';
+        let resultText = '';
+        if (trade.exitReason === 'STOP_LOSS') {
+            resultClass = 'result-fail';
+            resultText = 'STOP LOSS HIT';
+        } else if (trade.result === 'SUCCESS') {
+            resultClass = 'result-success';
+            resultText = 'TARGET HIT';
+        } else if (trade.result === 'FAIL') {
+            resultClass = 'result-fail';
+            resultText = 'NEITHER HIT';
+        } else {
+            resultClass = 'result-open';
+            resultText = 'OPEN';
+        }
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${new Date(trade.buyDate).toLocaleDateString()}</td>
+            <td>${trade.indicator}</td>
+            <td>₹${buyPrice.toFixed(2)}</td>
+            <td class="success">₹${targetPrice.toFixed(2)}</td>
+            <td class="failure">₹${stopLossPrice.toFixed(2)}</td>
+            <td class="success">₹${highReached.toFixed(2)}</td>
+            <td class="failure">₹${lowReached.toFixed(2)}</td>
+            <td>₹${exitPrice.toFixed(2)}</td>
+            <td>${trade.daysChecked}</td>
+            <td><span class="badge ${resultClass}">${resultText}</span></td>
+            <td class="${profitLoss >= 0 ? 'profit' : 'loss'}">
+                <strong>${profitLoss >= 0 ? '+' : ''}${profitLoss}%</strong>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function populateIndicatorFilter(results) {
+    const select = document.getElementById('indicatorFilter');
+    
+    results.forEach(result => {
+        const option = document.createElement('option');
+        option.value = result.indicator;
+        option.textContent = result.indicator;
+        select.appendChild(option);
+    });
+
+    select.addEventListener('change', function() {
+        const selectedIndicator = this.value;
+        if (selectedIndicator === 'ALL') {
+            displayTrades(allTradesData);
+        } else {
+            const filtered = allTradesData.filter(t => t.indicator === selectedIndicator);
+            displayTrades(filtered);
+        }
+    });
+}
+
+function showError(message) {
+    document.getElementById('loadingState').innerHTML = `
+        <div style="text-align:center;padding:2rem;">
+            <p style="font-size:1.2rem;color:#ef4444;margin-bottom:1rem;">⚠️ ${message}</p>
+            <a href="/advanced-scanner" style="color:#3b82f6;">← Back to Scanner</a>
+        </div>
+    `;
+}
+</script>
+
+<style>
+.scanner-detail-page {
+    padding: 1rem;
+    max-width: 100%;
+}
+
+.detail-header {
+    background: white;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.back-link {
+    color: #3b82f6;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+.detail-header h1 {
+    font-size: 1.5rem;
+    margin: 0;
+    color: #1f2937;
+}
+
+.header-params {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: #6b7280;
+    margin-left: auto;
+}
+
+.header-params strong {
+    color: #1f2937;
+}
+
+.summary-stats {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.stat-item {
+    background: white;
+    padding: 1rem;
+    border-radius: 6px;
+    border-left: 4px solid #3b82f6;
+}
+
+.stat-item.success {
+    border-left-color: #10b981;
+}
+
+.stat-item.failure {
+    border-left-color: #ef4444;
+}
+
+.stat-item.open {
+    border-left-color: #f59e0b;
+}
+
+.stat-item.rate {
+    border-left-color: #8b5cf6;
+}
+
+.stat-item.profit {
+    border-left-color: #06b6d4;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #1f2937;
+}
+
+.section {
+    background: white;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 6px;
+}
+
+.section h2 {
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+    color: #1f2937;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.section-header h2 {
+    margin: 0;
+}
+
+.filter-select {
+    padding: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.data-table th,
+.data-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.data-table th {
+    background: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.data-table tbody tr:hover {
+    background: #f9fafb;
+}
+
+.trades-table th,
+.trades-table td {
+    padding: 0.6rem;
+}
+
+.success {
+    color: #10b981;
+    font-weight: 600;
+}
+
+.failure {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.profit {
+    color: #10b981;
+    font-weight: 600;
+}
+
+.loss {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.success-high {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.success-medium {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.success-low {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.result-success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.result-fail {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.result-open {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.loading-state {
+    text-align: center;
+    padding: 3rem;
+    background: white;
+    border-radius: 6px;
+}
+
+.loading-spinner {
+    border: 4px solid #f3f4f6;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}

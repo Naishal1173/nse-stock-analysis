@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.requests import Request
+from pydantic import BaseModel
 import psycopg2
 import psycopg2.extras
 from psycopg2 import pool
@@ -34,6 +35,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_CONN
+from app.chatbot import get_chatbot_response, clear_conversation
 
 app = FastAPI(title="NSE Stock Analysis API - Optimized")
 
@@ -195,7 +197,7 @@ def _analyze_single_indicator_optimized(
     # ------------------------------------------
     if request_cache is not None and symbol in request_cache:
         # Use cached data from this request
-        price_dates, price_values = request_cache[symbol]
+        price_dates, price_values, high_prices, low_prices = request_cache[symbol]
     else:
         # Query database - GET HIGH/LOW/CLOSE for accurate target/stop checking
         cur.execute("""
@@ -211,12 +213,14 @@ def _analyze_single_indicator_optimized(
         high_prices = [float(r[2]) for r in rows]   # high prices
         low_prices = [float(r[3]) for r in rows]    # low prices
         
-        # Store in request cache if provided
+        # Store in request cache if provided (now includes high/low)
         if request_cache is not None:
-            request_cache[symbol] = (price_dates, price_values)
+            request_cache[symbol] = (price_dates, price_values, high_prices, low_prices)
 
     # Convert to numpy for vectorized operations
     price_array = np.array(price_values, dtype=np.float64)
+    high_array = np.array(high_prices, dtype=np.float64)
+    low_array = np.array(low_prices, dtype=np.float64)
     
     # Map date → index for O(1) lookup
     date_index = {d: i for i, d in enumerate(price_dates)}
@@ -243,6 +247,8 @@ def _analyze_single_indicator_optimized(
         
         # Slice future prices (single operation, no loop)
         future_prices = price_array[entry_idx + 1:end_idx]
+        future_highs = high_array[entry_idx + 1:end_idx]
+        future_lows = low_array[entry_idx + 1:end_idx]
         
         # CRITICAL FIX: Check if we have enough data to complete the analysis
         # If we don't have the full requested days, it's an OPEN trade
@@ -258,48 +264,57 @@ def _analyze_single_indicator_optimized(
                     "buyPrice": round(float(entry_price), 2),
                     "targetPrice": round(float(target_price), 2),
                     "maxPriceReached": None,
+                    "minPriceReached": None,
                     "daysChecked": 0,
                     "result": "OPEN"
                 })
             continue
         
-        # Vectorized operations - find cumulative max
-        # IMPORTANT: Include entry price to ensure max >= entry always
-        all_prices = np.concatenate([[entry_price], future_prices])
-        cummax_all = np.maximum.accumulate(all_prices)
-        cummax_prices = cummax_all[1:]  # Skip first element (entry price itself)
+        # Use HIGH prices to check if target was hit
+        # Use LOW prices to track minimum
         
-        # Calculate profit percentages vectorized
-        profit_pcts = ((cummax_prices - entry_price) / entry_price) * 100
+        # Calculate profit percentages using HIGH prices
+        profit_pcts = ((future_highs - entry_price) / entry_price) * 100
         
         # Find first index where target is hit
         hit_indices = np.where(profit_pcts >= target)[0]
         
-        # Max price reached (always >= entry price due to including entry in cummax)
-        max_price_reached = float(cummax_prices[-1])
-        max_profit_pct = ((max_price_reached - entry_price) / entry_price) * 100
         days_checked = actual_days_available
         
         if len(hit_indices) > 0:
             # Target HIT - SUCCESS
             exit_idx = hit_indices[0]
-            exit_price = cummax_prices[exit_idx]
-            exit_profit = ((exit_price - entry_price) / entry_price) * 100
+            exit_price = future_highs[exit_idx]  # Use the high price where target was hit
             
-            # Store the actual maximum profit reached (not just exit profit)
+            # Calculate max/min only up to exit point
+            max_high_reached = float(np.max(future_highs[:exit_idx + 1]))
+            min_low_reached = float(np.min(future_lows[:exit_idx + 1]))
+            
+            max_profit_pct = ((exit_price - entry_price) / entry_price) * 100
+            
+            # Store the actual profit at exit
             completed_trades.append(max_profit_pct)
             
             if include_details:
-                details.append({
+                detail_obj = {
                     "buyDate": trade_date.isoformat(),
                     "buyPrice": round(float(entry_price), 2),
                     "targetPrice": round(float(target_price), 2),
-                    "maxPriceReached": round(float(max_price_reached), 2),
+                    "maxPriceReached": round(float(max_high_reached), 2),
+                    "minPriceReached": round(float(min_low_reached), 2),
+                    "exitPrice": round(float(exit_price), 2),
                     "daysChecked": int(exit_idx + 1),
                     "result": "SUCCESS"
-                })
+                }
+                # DEBUG: Log to verify data
+                if len(details) < 2:
+                    print(f"[DEBUG SUCCESS] {detail_obj}")
+                details.append(detail_obj)
         else:
             # Target NOT hit within window
+            # Calculate max/min for entire window
+            max_high_reached = float(np.max(future_highs))
+            min_low_reached = float(np.min(future_lows))
             # CRITICAL FIX: If we don't have the full window, it's OPEN, not FAIL
             if not has_full_window:
                 # Insufficient data - this is an OPEN trade
@@ -309,12 +324,17 @@ def _analyze_single_indicator_optimized(
                         "buyDate": trade_date.isoformat(),
                         "buyPrice": round(float(entry_price), 2),
                         "targetPrice": round(float(target_price), 2),
-                        "maxPriceReached": round(float(max_price_reached), 2),
+                        "maxPriceReached": round(float(max_high_reached), 2),
+                        "minPriceReached": round(float(min_low_reached), 2),
+                        "exitPrice": None,
                         "daysChecked": days_checked,
                         "result": "OPEN"
                     })
             else:
                 # Full window available but target not hit - FAIL
+                # Use the last close price as exit
+                exit_price = future_prices[-1]
+                max_profit_pct = ((max_high_reached - entry_price) / entry_price) * 100
                 completed_trades.append(max_profit_pct)
                 
                 if include_details:
@@ -322,7 +342,9 @@ def _analyze_single_indicator_optimized(
                         "buyDate": trade_date.isoformat(),
                         "buyPrice": round(float(entry_price), 2),
                         "targetPrice": round(float(target_price), 2),
-                        "maxPriceReached": round(max_price_reached, 2),
+                        "maxPriceReached": round(float(max_high_reached), 2),
+                        "minPriceReached": round(float(min_low_reached), 2),
+                        "exitPrice": round(float(exit_price), 2),
                         "daysChecked": days_checked,
                         "result": "FAIL"
                     })
@@ -370,20 +392,20 @@ def _analyze_single_indicator_optimized(
 # =========================================================
 # BATCH PRICE LOADER - REDUCE DB QUERIES
 # =========================================================
-def _batch_load_prices(cur, symbols: List[str]) -> Dict[str, Tuple[List, List]]:
+def _batch_load_prices(cur, symbols: List[str]) -> Dict[str, Tuple[List, List, List, List]]:
     """
     Load prices for multiple symbols in a single query
     CRITICAL OPTIMIZATION: Reduces N queries to 1 query
-    Uses dict cursor for faster processing
+    Returns: Dict[symbol] = (dates, close_prices, high_prices, low_prices)
     """
     if not symbols:
         return {}
     
     result = {}
     
-    # Fetch all symbols in ONE query with optimized ordering
+    # Fetch all symbols in ONE query with high/low prices
     cur.execute("""
-        SELECT symbol, trade_date, close_price
+        SELECT symbol, trade_date, close_price, high_price, low_price
         FROM daily_prices
         WHERE symbol = ANY(%s)
         ORDER BY symbol, trade_date
@@ -395,25 +417,31 @@ def _batch_load_prices(cur, symbols: List[str]) -> Dict[str, Tuple[List, List]]:
     # Group by symbol using dict for O(1) lookups
     current_symbol = None
     current_dates = []
-    current_prices = []
+    current_closes = []
+    current_highs = []
+    current_lows = []
     
-    for symbol, trade_date, close_price in rows:
+    for symbol, trade_date, close_price, high_price, low_price in rows:
         if symbol != current_symbol:
             # Save previous symbol
             if current_symbol:
-                result[current_symbol] = (current_dates, current_prices)
+                result[current_symbol] = (current_dates, current_closes, current_highs, current_lows)
             
             # Start new symbol
             current_symbol = symbol
             current_dates = [trade_date]
-            current_prices = [float(close_price)]
+            current_closes = [float(close_price)]
+            current_highs = [float(high_price)]
+            current_lows = [float(low_price)]
         else:
             current_dates.append(trade_date)
-            current_prices.append(float(close_price))
+            current_closes.append(float(close_price))
+            current_highs.append(float(high_price))
+            current_lows.append(float(low_price))
     
-    # Save last symbol
+    # Don't forget the last symbol
     if current_symbol:
-        result[current_symbol] = (current_dates, current_prices)
+        result[current_symbol] = (current_dates, current_closes, current_highs, current_lows)
     
     return result
 
@@ -813,6 +841,16 @@ def indicator_analytics_page(request: Request):
 @app.get("/advanced-scanner", response_class=HTMLResponse)
 def advanced_scanner_page(request: Request):
     return templates.TemplateResponse("advanced_scanner.html", {"request": request})
+
+@app.get("/test-chatbot", response_class=HTMLResponse)
+def test_chatbot_page(request: Request):
+    """Test page for chatbot functionality"""
+    with open("test_chatbot.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+@app.get("/scanner-detail/{symbol}", response_class=HTMLResponse)
+def scanner_detail_page(request: Request, symbol: str):
+    return templates.TemplateResponse("scanner_detail.html", {"request": request, "symbol": symbol})
 
 @app.get("/api/symbols")
 def get_symbols(q: str = Query("")):
@@ -2397,13 +2435,15 @@ def day_trading_scan(
                 
                 if hit_target:
                     # Target hit - PROFIT
+                    # Exit at target price, not max price
                     profit_signals += 1
-                    profit_pct = ((max_price - float(buy_price)) / float(buy_price)) * 100
+                    profit_pct = target  # Exit at exactly target %
                     total_profit_loss += profit_pct
                 elif hit_stop_loss:
                     # Stop-loss hit - LOSS
+                    # Exit at stop loss price, not min price
                     loss_signals += 1
-                    loss_pct = ((min_price - float(buy_price)) / float(buy_price)) * 100
+                    loss_pct = -stop_loss  # Exit at exactly -stop_loss %
                     total_profit_loss += loss_pct
                 elif not has_full_window:
                     # Insufficient data - OPEN (don't count in profit/loss)
@@ -2421,9 +2461,9 @@ def day_trading_scan(
             if total_signals == 0:
                 continue
             
-            # Success rate based on COMPLETED trades only (not including open)
-            # Open trades haven't finished yet, so we can't count them as success or failure
-            success_rate = (profit_signals / completed_trades * 100) if completed_trades > 0 else 0
+            # Success rate based on TOTAL signals (including open trades)
+            # Formula: profit_signals / total_signals * 100
+            success_rate = (profit_signals / total_signals * 100) if total_signals > 0 else 0
             
             # Average P/L based on COMPLETED trades only (excluding open)
             avg_profit_loss = total_profit_loss / completed_trades if completed_trades > 0 else 0
@@ -3437,3 +3477,34 @@ def generate_pdf_report():
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
+
+
+# =========================================================
+# CHATBOT API ENDPOINTS
+# =========================================================
+
+class ChatMessage(BaseModel):
+    message: str
+    session_id: str = "default"
+
+@app.post("/api/chatbot")
+def chatbot_endpoint(chat: ChatMessage):
+    """
+    AI Chatbot endpoint - answers questions and provides navigation
+    """
+    try:
+        result = get_chatbot_response(chat.message, chat.session_id)
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "response": f"I apologize, but I encountered an error: {str(e)}",
+            "redirect": None
+        }
+
+@app.post("/api/chatbot/clear")
+def clear_chatbot_history(session_id: str = "default"):
+    """
+    Clear chatbot conversation history
+    """
+    return clear_conversation(session_id)
